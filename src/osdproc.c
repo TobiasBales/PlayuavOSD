@@ -394,14 +394,14 @@ void RenderScreen(void) {
   }
 
   if (eeprom_buffer.params.GpsLat_en == 1 && bShownAtPanle(eeprom_buffer.params.GpsLat_panle)) {
-    sprintf(tmp_str, "%0.5f", (double) osd_lat / 10000000.0f);
+    sprintf(tmp_str, "%0.5f\nh %0.5f", osd_lat, osd_home_lat);
     write_string(tmp_str, eeprom_buffer.params.GpsLat_posX,
                  eeprom_buffer.params.GpsLat_posY, 0, 0, TEXT_VA_TOP,
                  eeprom_buffer.params.GpsLat_align, 0,
                  SIZE_TO_FONT[eeprom_buffer.params.GpsLat_fontsize]);
   }
   if (eeprom_buffer.params.GpsLon_en == 1 && bShownAtPanle(eeprom_buffer.params.GpsLon_panel)) {
-    sprintf(tmp_str, "%0.5f", (double) osd_lon / 10000000.0f);
+    sprintf(tmp_str, "%0.5f\nh %0.5f", osd_lon, osd_home_lon);
     write_string(tmp_str, eeprom_buffer.params.GpsLon_posX,
                  eeprom_buffer.params.GpsLon_posY, 0, 0, TEXT_VA_TOP,
                  eeprom_buffer.params.GpsLon_align, 0,
@@ -441,14 +441,14 @@ void RenderScreen(void) {
                  SIZE_TO_FONT[eeprom_buffer.params.Gps2HDOP_fontsize]);
   }
   if (eeprom_buffer.params.Gps2Lat_en == 1 && bShownAtPanle(eeprom_buffer.params.Gps2Lat_panel)) {
-    sprintf(tmp_str, "%0.5f", (double) osd_lat2 / 10000000.0f);
+    sprintf(tmp_str, "%0.5f", (double) osd_lat2);
     write_string(tmp_str, eeprom_buffer.params.Gps2Lat_posX,
                  eeprom_buffer.params.Gps2Lat_posY, 0, 0, TEXT_VA_TOP,
                  eeprom_buffer.params.Gps2Lat_align, 0,
                  SIZE_TO_FONT[eeprom_buffer.params.Gps2Lat_fontsize]);
   }
   if (eeprom_buffer.params.Gps2Lon_en == 1 && bShownAtPanle(eeprom_buffer.params.Gps2Lon_panel)) {
-    sprintf(tmp_str, "%0.5f", (double) osd_lon2 / 10000000.0f);
+    sprintf(tmp_str, "%0.5f", (double) osd_lon2);
     write_string(tmp_str, eeprom_buffer.params.Gps2Lon_posX,
                  eeprom_buffer.params.Gps2Lon_posY, 0, 0, TEXT_VA_TOP,
                  eeprom_buffer.params.Gps2Lon_align, 0,
@@ -947,7 +947,7 @@ void hud_draw_CWH(void) {
     dstlat = fabs(osd_home_lat - osd_lat) * 111319.5f;
     dstlon = fabs(osd_home_lon - osd_lon) * 111319.5f * scaleLongDown;
     dstsqrt = dstlat * dstlat + dstlon * dstlon;
-    osd_home_distance = sqrt(dstsqrt) / 10000000.0f;
+    osd_home_distance = sqrt(dstsqrt);
 
     //DIR to Home
     dstlon = (osd_home_lon - osd_lon);     //OffSet_X
@@ -1308,6 +1308,8 @@ void hud_draw_head_wp_home() {
   suav.num_verts   = 3;
   suav.x0          = posX;
   suav.y0          = posY;
+  sprintf(tmp_str, "%d", (int) osd_heading);
+  write_string(tmp_str, posX, posY, 0, 0, TEXT_VA_MIDDLE, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
   VECTOR2D_INITXYZ(&(suav.vlist_local[0]), 0, -7);
   VECTOR2D_INITXYZ(&(suav.vlist_local[1]), -3, 7);
   VECTOR2D_INITXYZ(&(suav.vlist_local[2]), 3, 7);
@@ -1324,7 +1326,8 @@ void hud_draw_head_wp_home() {
   {
     float homeCX = posX + (eeprom_buffer.params.CWH_Nmode_home_radius) * Fast_Sin(osd_home_bearing);
     float homeCY = posY - (eeprom_buffer.params.CWH_Nmode_home_radius) * Fast_Cos(osd_home_bearing);
-    write_string("H", homeCX, homeCY, 0, 0, TEXT_VA_MIDDLE, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
+    sprintf(tmp_str, "H %d", (int) osd_home_bearing);
+    write_string(tmp_str, homeCX, homeCY, 0, 0, TEXT_VA_MIDDLE, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
   }
 
   //draw waypoint
