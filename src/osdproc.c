@@ -152,6 +152,10 @@ bool bShownAtPanle(uint16_t itemPanel) {
   return ((itemPanel & (1 << (current_panel - 1))) != 0);
 }
 
+bool enabledAndShownOnPanel(uint16_t enabled, uint16_t panel) {
+  return enabled == 1 && bShownAtPanle(panel);
+}
+
 void vTaskOSD(void *pvParameters) {
   uav3D_init();
   uav2D_init();
@@ -340,6 +344,8 @@ void RenderScreen(void) {
                  eeprom_buffer.params.Air_Speed_align, 0,
                  SIZE_TO_FONT[eeprom_buffer.params.Air_Speed_fontsize]);
   }
+
+  draw_home_direction();
 
   //uav attitude
   if (eeprom_buffer.params.Atti_3D_en == 1 && bShownAtPanle(eeprom_buffer.params.Atti_3D_panel)) {
@@ -812,6 +818,33 @@ void hud_draw_simple_attitude() {
                         2, 2, 0, 1);
   }
 
+}
+
+void draw_home_direction() {
+  if (enabledAndShownOnPanel(eeprom_buffer.params.HomeDirection_enabled,
+                             eeprom_buffer.params.HomeDirection_panel)) {
+    float bearing = osd_home_bearing - osd_heading;
+    Reset_Polygon2D(&home_direction);
+    Reset_Polygon2D(&home_direction_outline);
+    Transform_Polygon2D(&home_direction, bearing, 0, 0);
+    Transform_Polygon2D(&home_direction_outline, bearing, 0, 0);
+
+    for (int i = 0; i < home_direction.num_verts; i += 2) {
+      write_line_lm(home_direction.vlist_trans[i].x,
+                    home_direction.vlist_trans[i].y,
+                    home_direction.vlist_trans[i + 1].x,
+                    home_direction.vlist_trans[i + 1].y,
+                    1, 1);
+    }
+
+    for (int i = 0; i < home_direction.num_verts; i += 2) {
+      write_line_lm(home_direction_outline.vlist_trans[i].x,
+                    home_direction_outline.vlist_trans[i].y,
+                    home_direction_outline.vlist_trans[i + 1].x,
+                    home_direction_outline.vlist_trans[i + 1].y,
+                    0, 0);
+    }
+  }
 }
 
 void hud_draw_uav2d() {

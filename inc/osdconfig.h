@@ -323,6 +323,11 @@ typedef union {
     uint16_t LinkQuality_max;
     uint16_t LinkQuality_type;
 
+    uint16_t HomeDirection_enabled;
+    uint16_t HomeDirection_panel;
+    uint16_t HomeDirection_posX;
+    uint16_t HomeDirection_posY;
+
 //		//below is unused. if add a param, reduce one item here
 //		uint16_t unused[EERROM_SIZE/2 - 104];
   }params;
