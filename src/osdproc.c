@@ -481,7 +481,7 @@ void draw_home_latitude() {
     return;
   }
 
-  sprintf(tmp_str, "H %0.5f", (double) osd_lat / 10000000.0f);
+  sprintf(tmp_str, "H %0.5f", (double) osd_home_lat / 10000000.0f);
   write_string(tmp_str, eeprom_buffer.params.HomeLatitude_posX,
                eeprom_buffer.params.HomeLatitude_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.HomeLatitude_align, 0,
@@ -494,7 +494,7 @@ void draw_home_longitude() {
     return;
   }
 
-  sprintf(tmp_str, "H %0.5f", (double) osd_lon / 10000000.0f);
+  sprintf(tmp_str, "H %0.5f", (double) osd_home_lon / 10000000.0f);
   write_string(tmp_str, eeprom_buffer.params.HomeLongitude_posX,
                eeprom_buffer.params.HomeLongitude_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.HomeLongitude_align, 0,
