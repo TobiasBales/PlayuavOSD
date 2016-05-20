@@ -38,11 +38,11 @@ STM32_INCLUDES = -I$(STMLIBSDIR)/CMSIS/Include/ \
           		 -I$(USBDEVICELIB)/Core/inc    \
           		 -I$(USBHOSTLIB)/Core/inc    \
           		 -I$(USBOTGLIB)/inc    \
-				 -I./inc 
+				 -I./inc
 OPTIMIZE       = -Os
 
 CFLAGS	= $(MCFLAGS)  $(OPTIMIZE)  $(DEFS) -I./ -I./ $(STM32_INCLUDES)  -Wl,-T,./linker/stm32_flash.ld
-AFLAGS	= $(MCFLAGS) 
+AFLAGS	= $(MCFLAGS)
 #-mapcs-float use float regs. small increase in code size
 
 STM32_USB_OTG_SRC = $(USBOTGLIB)/src/usb_dcd_int.c \
@@ -116,16 +116,15 @@ all: $(TARGETBIN) objcopy
 
 $(TARGETBIN): $(EXECUTABLE)
 	$(BIN) $^ $@
-	
+
 $(EXECUTABLE): $(SRC) $(STARTUP)
 	$(CC) $(CFLAGS) $^ -lm -lc -lnosys -mthumb -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -o $@
 
 objcopy:
-	@python -u px_mkfw.py --image $(TARGETBIN) > $(TARGETHEX)
-	
+	@python -u px_mkfw.py --image $(TARGETBIN)
+
 clean:
 	rm -f $(TARGETBIN) $(EXECUTABLE) $(TARGETHEX) $(SRC:.c=.lst)
 
-upload: $(TARGETBIN) 
+upload: $(TARGETBIN)
 	st-flash write $(TARGETBIN) 0x8004000
-
