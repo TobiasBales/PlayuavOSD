@@ -24,7 +24,7 @@ uint8_t mavbeat = 0;
 uint32_t lastMAVBeat = 0;
 uint32_t lastWritePanel = 0;
 uint8_t waitingMAVBeats = 1;
-uint8_t mav__type;
+uint8_t mav_type;
 uint8_t mav_system;
 uint8_t mav_component;
 uint8_t enable_mav_request = 0;

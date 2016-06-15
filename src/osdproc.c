@@ -1515,7 +1515,7 @@ void draw_flight_mode() {
   switch (autopilot) {
   case 3:       //ardupilotmega
   {
-    if (mav__type != 1) {
+    if (mav_type != 1) {
       if (custom_mode == 0)       mode_str = "STAB";              //manual airframe angle with manual throttle
       else if (custom_mode == 1)  mode_str = "ACRO";              //manual body-frame angular rate with manual throttle
       else if (custom_mode == 2)  mode_str = "ALTH";              //manual airframe angle with automatic throttle
@@ -1533,7 +1533,7 @@ void draw_flight_mode() {
       else if (custom_mode == 15) mode_str = "ATUN";              //automatically tune the vehicle's roll and pitch gains
       else if (custom_mode == 16) mode_str = "POSH";              //automatic position hold with manual override, with automatic throttle
       else if (custom_mode == 17) mode_str = "BRAK";              //full-brake using inertial/GPS system, no pilot input
-    } else if (mav__type == 1) {          //ArduPlane
+    } else if (mav_type == 1) {          //ArduPlane
       if (custom_mode == 0)       mode_str = "MANU";              //Manual
       else if (custom_mode == 1)  mode_str = "CIRC";              //Circle
       else if (custom_mode == 2)  mode_str = "STAB";              //Stabilize

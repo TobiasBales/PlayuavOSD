@@ -95,7 +95,7 @@ void parseMavlink(void) {
         mavbeat = 1;
         mav_system    = msg.sysid;
         mav_component = msg.compid;
-        mav__type      = mavtype;
+        mav_type      = mavtype;
         autopilot = mavlink_msg_heartbeat_get_autopilot(&msg);
         base_mode = mavlink_msg_heartbeat_get_base_mode(&msg);
         custom_mode = mavlink_msg_heartbeat_get_custom_mode(&msg);
