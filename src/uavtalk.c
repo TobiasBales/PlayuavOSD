@@ -345,7 +345,7 @@ void parseUAVTalk(void) {
       case FLIGHTSTATUS_OBJID_004:
       case FLIGHTSTATUS_OBJID_005:
         //osd_armed		= uavtalk_get_int8(&msg, FLIGHTSTATUS_OBJ_ARMED);
-        osd_mode                = uavtalk_get_int8(&msg, FLIGHTSTATUS_OBJ_FLIGHTMODE);
+        custom_mode                = uavtalk_get_int8(&msg, FLIGHTSTATUS_OBJ_FLIGHTMODE);
         break;
       case MANUALCONTROLCOMMAND_OBJID:
       case MANUALCONTROLCOMMAND_OBJID_001:
