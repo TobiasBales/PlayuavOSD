@@ -8,9 +8,9 @@ extern uint8_t mavbeat;
 extern uint32_t lastMAVBeat;
 extern uint32_t lastWritePanel;
 extern uint8_t waitingMAVBeats;
-extern uint8_t apm_mav_type;
-extern uint8_t apm_mav_system;
-extern uint8_t apm_mav_component;
+extern uint8_t mav_type;
+extern uint8_t mav_system;
+extern uint8_t mav_component;
 extern uint8_t enable_mav_request;
 extern uint32_t sys_start_time;
 extern uint32_t heatbeat_start_time;
@@ -63,10 +63,11 @@ extern float aspd_error; // Current airspeed error in meters/second
 extern float xtrack_error; // Current crosstrack error on x-y plane in meters
 extern float eff; //Efficiency
 
-extern uint32_t osd_mode;
+extern uint32_t custom_mode;
 extern bool motor_armed;
 extern bool last_motor_armed;
 extern uint8_t base_mode;
+extern uint8_t autopilot;
 
 extern bool osd_chan_cnt_above_eight;
 extern uint16_t osd_chan1_raw;

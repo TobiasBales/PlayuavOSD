@@ -24,9 +24,9 @@ uint8_t mavbeat = 0;
 uint32_t lastMAVBeat = 0;
 uint32_t lastWritePanel = 0;
 uint8_t waitingMAVBeats = 1;
-uint8_t apm_mav_type;
-uint8_t apm_mav_system;
-uint8_t apm_mav_component;
+uint8_t mav_type;
+uint8_t mav_system;
+uint8_t mav_component;
 uint8_t enable_mav_request = 0;
 uint32_t sys_start_time = 0;
 uint32_t heatbeat_start_time = 0;
@@ -80,10 +80,11 @@ float xtrack_error = 0.0f; // Current crosstrack error on x-y plane in meters
 float eff = 0.0f; //Efficiency
 uint8_t osd_linkquality = 0;
 
-uint32_t osd_mode = 0;
 bool motor_armed = false;
 bool last_motor_armed = false;
+uint8_t autopilot = 0;
 uint8_t base_mode = 0;
+uint32_t custom_mode = 0;
 
 bool osd_chan_cnt_above_eight = false;
 uint16_t osd_chan1_raw = 0;

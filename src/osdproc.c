@@ -27,6 +27,7 @@
 #include "osdconfig.h"
 #include "osdmavlink.h"
 #include "math3d.h"
+#include "px4_custom_mode.h"
 
 #define HUD_VSCALE_FLAG_CLEAR       1
 #define HUD_VSCALE_FLAG_NO_NEGATIVE 2
@@ -1510,40 +1511,78 @@ void draw_flight_mode() {
     return;
   }
 
-  char* mode_str = "unknown";
-  if (apm_mav_type != 1) {   //ArduCopter MultiRotor or ArduCopter Heli
-    if (osd_mode == 0)       mode_str = "STAB";      //manual airframe angle with manual throttle
-    else if (osd_mode == 1)  mode_str = "ACRO";      //manual body-frame angular rate with manual throttle
-    else if (osd_mode == 2)  mode_str = "ALTH";      //manual airframe angle with automatic throttle
-    else if (osd_mode == 3)  mode_str = "AUTO";      //fully automatic waypoint control using mission commands
-    else if (osd_mode == 4)  mode_str = "GUID";      //fully automatic fly to coordinate or fly at velocity/direction using GCS immediate commands
-    else if (osd_mode == 5)  mode_str = "LOIT";      //automatic horizontal acceleration with automatic throttle
-    else if (osd_mode == 6)  mode_str = "RETL";      //automatic return to launching point
-    else if (osd_mode == 7)  mode_str = "CIRC";      //automatic circular flight with automatic throttle
-    //else if (osd_mode == 8)  mode_str = "POSI"; //Position: auto control
-    else if (osd_mode == 9)  mode_str = "LAND";      //automatic landing with horizontal position control
-    else if (osd_mode == 10) mode_str = "OFLO";      //deprecated
-    else if (osd_mode == 11) mode_str = "DRIF";      //semi-automous position, yaw and throttle control
-    else if (osd_mode == 13) mode_str = "SPRT";      //manual earth-frame angular rate control with manual throttle
-    else if (osd_mode == 14) mode_str = "FLIP";      //automatically flip the vehicle on the roll axis
-    else if (osd_mode == 15) mode_str = "ATUN";      //automatically tune the vehicle's roll and pitch gains
-    else if (osd_mode == 16) mode_str = "POSH";      //automatic position hold with manual override, with automatic throttle
-    else if (osd_mode == 17) mode_str = "BRAK";      //full-brake using inertial/GPS system, no pilot input
-  } else if (apm_mav_type == 1) {  //ArduPlane
-    if (osd_mode == 0)       mode_str = "MANU";      //Manual
-    else if (osd_mode == 1)  mode_str = "CIRC";      //Circle
-    else if (osd_mode == 2)  mode_str = "STAB";      //Stabilize
-    else if (osd_mode == 3)  mode_str = "TRNG";      //Training
-    else if (osd_mode == 4)  mode_str = "ACRO";      //Acro
-    else if (osd_mode == 5)  mode_str = "FBWA";      //Fly_By_Wire_A
-    else if (osd_mode == 6)  mode_str = "FBWB";      //Fly_By_Wire_B
-    else if (osd_mode == 7)  mode_str = "CRUI";      //Cruise
-    else if (osd_mode == 8)  mode_str = "ATUN";      //Auto Tune
-    else if (osd_mode == 10) mode_str = "AUTO";      //Auto
-    else if (osd_mode == 11) mode_str = "RETL";      //Return to Launch
-    else if (osd_mode == 12) mode_str = "LOIT";      //Loiter
-    else if (osd_mode == 15) mode_str = "GUID";      //Guided
-    else if (osd_mode == 16) mode_str = "INIT";      //Initializing
+  char* mode_str = "UNKNOWN";
+  switch (autopilot) {
+  case 3:       //ardupilotmega
+  {
+    if (mav_type != 1) {
+      if (custom_mode == 0)       mode_str = "STAB";              //manual airframe angle with manual throttle
+      else if (custom_mode == 1)  mode_str = "ACRO";              //manual body-frame angular rate with manual throttle
+      else if (custom_mode == 2)  mode_str = "ALTH";              //manual airframe angle with automatic throttle
+      else if (custom_mode == 3)  mode_str = "AUTO";              //fully automatic waypoint control using mission commands
+      else if (custom_mode == 4)  mode_str = "GUID";              //fully automatic fly to coordinate or fly at velocity/direction using GCS immediate commands
+      else if (custom_mode == 5)  mode_str = "LOIT";              //automatic horizontal acceleration with automatic throttle
+      else if (custom_mode == 6)  mode_str = "RETL";              //automatic return to launching point
+      else if (custom_mode == 7)  mode_str = "CIRC";              //automatic circular flight with automatic throttle
+      //else if (custom_mode == 8)  mode_str = "POSI"; //Position: auto control
+      else if (custom_mode == 9)  mode_str = "LAND";              //automatic landing with horizontal position control
+      else if (custom_mode == 10) mode_str = "OFLO";              //deprecated
+      else if (custom_mode == 11) mode_str = "DRIF";              //semi-automous position, yaw and throttle control
+      else if (custom_mode == 13) mode_str = "SPRT";              //manual earth-frame angular rate control with manual throttle
+      else if (custom_mode == 14) mode_str = "FLIP";              //automatically flip the vehicle on the roll axis
+      else if (custom_mode == 15) mode_str = "ATUN";              //automatically tune the vehicle's roll and pitch gains
+      else if (custom_mode == 16) mode_str = "POSH";              //automatic position hold with manual override, with automatic throttle
+      else if (custom_mode == 17) mode_str = "BRAK";              //full-brake using inertial/GPS system, no pilot input
+    } else if (mav_type == 1) {          //ArduPlane
+      if (custom_mode == 0)       mode_str = "MANU";              //Manual
+      else if (custom_mode == 1)  mode_str = "CIRC";              //Circle
+      else if (custom_mode == 2)  mode_str = "STAB";              //Stabilize
+      else if (custom_mode == 3)  mode_str = "TRNG";              //Training
+      else if (custom_mode == 4)  mode_str = "ACRO";              //Acro
+      else if (custom_mode == 5)  mode_str = "FBWA";              //Fly_By_Wire_A
+      else if (custom_mode == 6)  mode_str = "FBWB";              //Fly_By_Wire_B
+      else if (custom_mode == 7)  mode_str = "CRUI";              //Cruise
+      else if (custom_mode == 8)  mode_str = "ATUN";              //Auto Tune
+      else if (custom_mode == 10) mode_str = "AUTO";              //Auto
+      else if (custom_mode == 11) mode_str = "RETL";              //Return to Launch
+      else if (custom_mode == 12) mode_str = "LOIT";              //Loiter
+      else if (custom_mode == 15) mode_str = "GUID";              //Guided
+      else if (custom_mode == 16) mode_str = "INIT";              //Initializing
+    }
+
+    break;
+  }
+  case 12:       //PX4
+  {
+    union px4_custom_mode custom_mode_px4;
+    custom_mode_px4.data = custom_mode;
+
+    if (custom_mode_px4.main_mode == 1) mode_str = "MANUAL";
+    else if (custom_mode_px4.main_mode == 2) mode_str = "ALTCTL";
+    else if (custom_mode_px4.main_mode == 3) mode_str = "POSCTL";
+    else if (custom_mode_px4.main_mode == 4)
+    {
+      if (custom_mode_px4.sub_mode == 1)  mode_str = "READY";
+      else if (custom_mode_px4.sub_mode == 2)  mode_str = "TAKEOFF";
+      else if (custom_mode_px4.sub_mode == 3)  mode_str = "LOITER";
+      else if (custom_mode_px4.sub_mode == 4)  mode_str = "MISSION";
+      else if (custom_mode_px4.sub_mode == 5)  mode_str = "RTL";
+      else if (custom_mode_px4.sub_mode == 6)  mode_str = "LAND";
+      else if (custom_mode_px4.sub_mode == 7)  mode_str = "RTGS";
+      else if (custom_mode_px4.sub_mode == 8)  mode_str = "FOLLOW";
+    }
+    else if (custom_mode_px4.main_mode == 5) mode_str = "ACRO";
+    else if (custom_mode_px4.main_mode == 6) mode_str = "OFFBOARD";
+    else if (custom_mode_px4.main_mode == 7) mode_str = "STABILIZE";
+    else if (custom_mode_px4.main_mode == 8) mode_str = "RATTITUDE";
+
+    break;
+  }
+
+  default:
+  {
+    mode_str = "UNSUPPORTED";
+  }
   }
 
   write_string(mode_str, eeprom_buffer.params.FlightMode_posX, eeprom_buffer.params.FlightMode_posY,
@@ -1900,10 +1939,10 @@ void DJI_test(void) {
   write_string(tmp_str, 20, GRAPHICS_Y_MIDDLE - 15, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[1]);
 
   char* mode_str = "unknown";
-  if (osd_mode == 0) mode_str = "MANUAL";
-  else if (osd_mode == 1) mode_str = "GPS";
-  else if (osd_mode == 2) mode_str = "FAILSAFE";
-  else if (osd_mode == 3) mode_str = "ATTI";
+  if (custom_mode == 0) mode_str = "MANUAL";
+  else if (custom_mode == 1) mode_str = "GPS";
+  else if (custom_mode == 2) mode_str = "FAILSAFE";
+  else if (custom_mode == 3) mode_str = "ATTI";
 
   write_string(mode_str, 20, GRAPHICS_Y_MIDDLE + 15, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);
 

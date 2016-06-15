@@ -44,25 +44,25 @@ void request_mavlink_rates(void) {
   //uint16_t MAVRates[MAX_STREAMS] = {0x01, 0x02, 0x05, 0x02, 0x05, 0x02};
   uint16_t MAVRates[MAX_STREAMS] = { 0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x0A };
 
-//	if(apm_mav_component == 0x32) //pixhawk origin FW
+//	if(mav_component == 0x32) //pixhawk origin FW
 //	{
 //		return; //we need not change the rate
 //	}
   for (uint32_t i = 0; i < MAX_STREAMS; i++) {
     mavlink_msg_request_data_stream_send(MAVLINK_COMM_0,
-                                         apm_mav_system, apm_mav_component,
+                                         mav_system, mav_component,
                                          MAVStreams[i], MAVRates[i], 1);
   }
 }
 
 void request_mission_count(void) {
   mavlink_msg_mission_request_list_send(MAVLINK_COMM_0,
-                                        apm_mav_system, apm_mav_component);
+                                        mav_system, mav_component);
 }
 
 void request_mission_item(uint16_t index) {
   mavlink_msg_mission_request_send(MAVLINK_COMM_0,
-                                   apm_mav_system, apm_mav_component, index);
+                                   mav_system, mav_component, index);
 }
 
 void parseMavlink(void) {
@@ -93,11 +93,13 @@ void parseMavlink(void) {
         }
 
         mavbeat = 1;
-        apm_mav_system    = msg.sysid;
-        apm_mav_component = msg.compid;
-        apm_mav_type      = mavtype;
-        osd_mode = mavlink_msg_heartbeat_get_custom_mode(&msg);
+        mav_system    = msg.sysid;
+        mav_component = msg.compid;
+        mav_type      = mavtype;
+        autopilot = mavlink_msg_heartbeat_get_autopilot(&msg);
         base_mode = mavlink_msg_heartbeat_get_base_mode(&msg);
+        custom_mode = mavlink_msg_heartbeat_get_custom_mode(&msg);
+
 
         last_motor_armed = motor_armed;
         motor_armed = base_mode & (1 << 7);
@@ -131,8 +133,8 @@ void parseMavlink(void) {
         osd_vbat_A = (mavlink_msg_sys_status_get_voltage_battery(&msg) / 1000.0f);                 //Battery voltage, in millivolts (1 = 1 millivolt)
         osd_curr_A = mavlink_msg_sys_status_get_current_battery(&msg);                 //Battery current, in 10*milliamperes (1 = 10 milliampere)
         osd_battery_remaining_A = mavlink_msg_sys_status_get_battery_remaining(&msg);                 //Remaining battery energy: (0%: 0, 100%: 100)
-        //osd_mode = apm_mav_component;//Debug
-        //osd_nav_mode = apm_mav_system;//Debug
+        //custom_mode = mav_component;//Debug
+        //osd_nav_mode = mav_system;//Debug
       }
       break;
       case MAVLINK_MSG_ID_GPS_RAW_INT:
