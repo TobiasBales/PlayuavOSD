@@ -418,6 +418,14 @@ void draw_home_direction() {
                   home_direction_outline.vlist_trans[i + 1].y + y,
                   1, 0);
   }
+
+  char tmp_str[15] = { 0 };
+  sprintf(tmp_str, "b %d", (int32_t)bearing);
+  write_string(tmp_str, x, y + 15, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
+  sprintf(tmp_str, "ohb %d", (int32_t)osd_home_bearing);
+  write_string(tmp_str, x, y + 30, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
+  sprintf(tmp_str, "oh %d", (int32_t)osd_heading);
+  write_string(tmp_str, x, y + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
 }
 
 void draw_uav2d() {
@@ -715,23 +723,24 @@ void draw_CWH(void) {
       }
     }
 
-    // shrinking factor for longitude going to poles direction
-    double scaleLongDown = Fast_Cos(fabs(osd_home_lat));
-    double scaleLongUp   = 1.0f / Fast_Cos(fabs(osd_home_lat));
 
-    //DST to Home
+    float rads = fabs(osd_home_lat) * 0.0174532925;
+    double scaleLongDown = cos(rads);
+    double scaleLongUp   = 1.0f/cos(rads);
+
     dstlat = fabs(osd_home_lat - osd_lat) * 111319.5f;
     dstlon = fabs(osd_home_lon - osd_lon) * 111319.5f * scaleLongDown;
     dstsqrt = dstlat * dstlat + dstlon * dstlon;
     osd_home_distance = sqrt(dstsqrt) / 10000000.0f;
 
-    //DIR to Home
-    dstlon = (osd_home_lon - osd_lon);     //OffSet_X
-    dstlat = (osd_home_lat - osd_lat) * scaleLongUp;     //OffSet Y
-    osd_home_bearing = 270 + (atan2(dstlat, -dstlon) * R2D);     //absolut home direction
-    //osd_home_bearing = (osd_home_bearing+360)%360;
-    if (osd_home_bearing > 360)
-      osd_home_bearing -= 360;
+    dstlon = (osd_home_lon - osd_lon); //OffSet_X
+    dstlat = (osd_home_lat - osd_lat) * scaleLongUp; //OffSet Y
+
+    long bearing = 90 + (atan2(dstlat, -dstlon) * 57.295775); //absolut home direction
+    if(bearing < 0) bearing += 360;//normalization
+    bearing = bearing - 180;//absolut return direction
+    if(bearing < 0) bearing += 360;//normalization
+    osd_home_bearing = bearing;
   }
 
   //distance
