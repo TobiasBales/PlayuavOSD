@@ -418,14 +418,6 @@ void draw_home_direction() {
                   home_direction_outline.vlist_trans[i + 1].y + y,
                   1, 0);
   }
-
-  char tmp_str[15] = { 0 };
-  sprintf(tmp_str, "b %d", (int32_t)bearing);
-  write_string(tmp_str, x, y + 15, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
-  sprintf(tmp_str, "ohb %d", (int32_t)osd_home_bearing);
-  write_string(tmp_str, x, y + 30, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
-  sprintf(tmp_str, "oh %d", (int32_t)osd_heading);
-  write_string(tmp_str, x, y + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
 }
 
 void draw_uav2d() {
