@@ -434,7 +434,7 @@ void draw_uav2d() {
 }
 
 void draw_throttle(void) {
-  if (enabledAndShownOnPanel(eeprom_buffer.params.Throt_en,
+  if (!enabledAndShownOnPanel(eeprom_buffer.params.Throt_en,
                              eeprom_buffer.params.Throt_panel)) {
     return;
   }
