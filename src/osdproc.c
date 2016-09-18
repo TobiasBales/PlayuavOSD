@@ -221,6 +221,7 @@ void RenderScreen(void) {
   draw_rssi();
   draw_link_quality();
   draw_efficiency();
+  draw_watts();
   draw_wind();
   draw_map();
 
@@ -923,6 +924,19 @@ void draw_efficiency() {
   write_string(tmp_str, eeprom_buffer.params.Efficiency_posX, eeprom_buffer.params.Efficiency_posY,
                0, 0, TEXT_VA_TOP, eeprom_buffer.params.Efficiency_align, 0,
                SIZE_TO_FONT[eeprom_buffer.params.Efficiency_fontsize]);
+}
+
+void draw_watts() {
+  if (!enabledAndShownOnPanel(eeprom_buffer.params.Watts_en,
+                              eeprom_buffer.params.Watts_panel)) {
+    return;
+  }
+
+  sprintf(tmp_str, "%0.1fW", osd_vbat_A * osd_curr_A * 0.01);
+
+  write_string(tmp_str, eeprom_buffer.params.Watts_posX, eeprom_buffer.params.Watts_posY,
+               0, 0, TEXT_VA_TOP, eeprom_buffer.params.Watts_align, 0,
+               SIZE_TO_FONT[eeprom_buffer.params.Watts_fontsize]);
 }
 
 void draw_panel_changed() {

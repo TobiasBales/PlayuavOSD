@@ -346,6 +346,13 @@ typedef union {
     uint16_t HomeLongitude_posY;
     uint16_t HomeLongitude_fontsize;
     uint16_t HomeLongitude_align;
+    
+    uint16_t Watts_en;
+    uint16_t Watts_panel;
+    uint16_t Watts_posX;
+    uint16_t Watts_posY;
+    uint16_t Watts_fontsize;
+    uint16_t Watts_align;
 
 //		//below is unused. if add a param, reduce one item here
 //		uint16_t unused[EERROM_SIZE/2 - 104];
