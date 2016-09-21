@@ -729,7 +729,7 @@ void draw_CWH(void) {
     dstlon = (osd_home_lon - osd_lon); //OffSet_X
     dstlat = (osd_home_lat - osd_lat) * scaleLongUp; //OffSet Y
 
-    long bearing = 90 + (atan2(dstlat, -dstlon) * 57.295775); //absolut home direction
+    long bearing = 90 + (atan2f(dstlat, -dstlon) * 57.295775); //absolut home direction
     if(bearing < 0) bearing += 360;//normalization
     bearing = bearing - 180;//absolut return direction
     if(bearing < 0) bearing += 360;//normalization
