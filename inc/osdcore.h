@@ -81,4 +81,7 @@ enum Trans_mode {
 #define TELEM_LINES         4   // num telem rows
 #define TELEM_BUFFER_WIDTH  12  // gives (12 *8) div 10 == 9 bytes of data per line
 
+// GPS is normally carried around in form "64733478", this is used to get back to -64.733478
+#define DEGREE_MULTIPLIER 10000000.0f
+
 #endif

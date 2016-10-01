@@ -11,6 +11,8 @@
 
 // storage for our lookup tables
 
+float Convert_Angle_To_Radians(float angle);
+float Convert_Radians_To_Angle(float radians);
 void Build_Sin_Cos_Tables(void);
 float Fast_Sin(float theta);
 float Fast_Cos(float theta);

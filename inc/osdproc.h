@@ -58,6 +58,7 @@ void draw_warning(void);
 void draw_CWH(void);
 void draw_head_wp_home(void);
 void draw_watts(void);
+void draw_osd_linear_compass(void);
 
 void draw_vertical_scale(int v, int range, int halign, int x, int y, int height, int mintick_step,
                          int majtick_step, int mintick_len, int majtick_len,
@@ -66,6 +67,9 @@ void draw_vertical_scale(int v, int range, int halign, int x, int y, int height,
 void draw_linear_compass(int v, int home_dir, int range, int width, int x, int y, int mintick_step,
                          int majtick_step, int mintick_len, int majtick_len,
                          __attribute__((unused)) int flags);
+                         
+float get_bearing_to_home_in_degrees(void);
+float get_distance_from_home_in_meters(void);
 
 void DJI_test(void);
 
