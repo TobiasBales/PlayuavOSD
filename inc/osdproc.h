@@ -17,6 +17,15 @@ void vTaskOSD(void *pvParameters);
 
 void RenderScreen(void);
 
+
+void set_home_position_if_unset(void);
+void set_home_altitude_if_unset(void);  
+void set_home_distance_and_bearing(void);
+
+void draw_distance_to_home(void);
+void draw_distance_to_waypoint(void);
+
+
 void draw_uav3d(void);
 void draw_uav2d(void);
 void draw_throttle(void);

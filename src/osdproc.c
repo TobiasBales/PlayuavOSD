@@ -188,6 +188,11 @@ void RenderScreen(void) {
     current_panel = 1;
   }
 
+  set_home_position_if_unset();
+  set_home_altitude_if_unset();
+  
+  set_home_distance_and_bearing();
+  
   draw_flight_mode();
   draw_arm_state();
   draw_battery_voltage();
@@ -216,7 +221,10 @@ void RenderScreen(void) {
   draw_gps2_longitude();
   draw_total_trip();
   draw_time();
-  draw_CWH();
+  draw_distance_to_home();
+  draw_distance_to_waypoint();     
+  draw_head_wp_home();
+  draw_osd_linear_compass();
   draw_climb_rate();
   draw_rssi();
   draw_link_quality();
@@ -710,22 +718,21 @@ void draw_time() {
 
 // Haversine distance
 // http://www.movable-type.co.uk/scripts/latlong.html
-float get_distance_between_locations_in_meters(float lat_one, 
-                                               float lon_one, 
-                                               float lat_two, 
-                                               float lon_two)
-{
+float get_distance_between_locations_in_meters(float lat_from, 
+                                               float lon_from, 
+                                               float lat_to, 
+                                               float lon_to) {
     float R = 6371e3; // metres
     
-    lat_one = lat_one / DEGREE_MULTIPLIER;
-    lon_one = lon_one / DEGREE_MULTIPLIER;
-    lat_two = lat_two / DEGREE_MULTIPLIER;
-    lon_two = lon_two / DEGREE_MULTIPLIER;
+    lat_from = lat_from / DEGREE_MULTIPLIER;
+    lon_from = lon_from / DEGREE_MULTIPLIER;
+    lat_to = lat_to / DEGREE_MULTIPLIER;
+    lon_to = lon_to / DEGREE_MULTIPLIER;
     
-    float phi_one = Convert_Angle_To_Radians(lat_one);
-    float phi_two = Convert_Angle_To_Radians(lat_two);
-    float delta_phi = Convert_Angle_To_Radians(lat_two - lat_one);
-    float delta_lambda = Convert_Angle_To_Radians(lon_two - lon_one);
+    float phi_one = Convert_Angle_To_Radians(lat_from);
+    float phi_two = Convert_Angle_To_Radians(lat_to);
+    float delta_phi = Convert_Angle_To_Radians(lat_to - lat_from);
+    float delta_lambda = Convert_Angle_To_Radians(lon_to - lon_from);
     
     // I suggest we avoid using optimized math functions until we have
     // something working well. -- SLG
@@ -738,15 +745,13 @@ float get_distance_between_locations_in_meters(float lat_one,
     return distance;
 }
 
-float get_distance_from_home_in_meters()
-{
+float get_distance_from_home_in_meters() {
     return get_distance_between_locations_in_meters(osd_home_lat, osd_home_lon, osd_lat, osd_lon);
 }
 
 // Thanks again to:
 // http://www.movable-type.co.uk/scripts/latlong.html
-float get_bearing_to_home_in_degrees()
-{
+float get_bearing_to_home_in_degrees() {
     float phi_1 = Convert_Angle_To_Radians(osd_lat / DEGREE_MULTIPLIER);
     float phi_2 = Convert_Angle_To_Radians(osd_home_lat / DEGREE_MULTIPLIER);
     float delta_lambda = Convert_Angle_To_Radians((osd_home_lon / DEGREE_MULTIPLIER) - (osd_lon / DEGREE_MULTIPLIER));
@@ -760,8 +765,7 @@ float get_bearing_to_home_in_degrees()
     return final_angle;
 }
 
-void draw_distance_to_home()
-{
+void draw_distance_to_home() {
     if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_home_dist_en, 
                               eeprom_buffer.params.CWH_home_dist_panel)) {
       return;
@@ -778,8 +782,7 @@ void draw_distance_to_home()
     write_string(tmp_str, eeprom_buffer.params.CWH_home_dist_posX, eeprom_buffer.params.CWH_home_dist_posY, 0, 0, TEXT_VA_TOP, eeprom_buffer.params.CWH_home_dist_align, 0, SIZE_TO_FONT[eeprom_buffer.params.CWH_home_dist_fontsize]);  
 }
 
-void draw_distance_to_waypoint()
-{
+void draw_distance_to_waypoint() {
   if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_wp_dist_en, 
                               eeprom_buffer.params.CWH_wp_dist_panel)) {
       return;
@@ -800,8 +803,7 @@ void draw_distance_to_waypoint()
 
 // Set Home Position if needed.
 // (Might be able to move this to main task loop? -- SLG)
-void set_home_position_if_unset()
-{
+void set_home_position_if_unset() {
   if ((osd_got_home == 0) && (motor_armed) && (osd_fix_type > 1)) {
     osd_home_lat = osd_lat;
     osd_home_lon = osd_lon;
@@ -810,8 +812,7 @@ void set_home_position_if_unset()
   }    
 }
 
-void set_home_altitude_if_unset()
-{
+void set_home_altitude_if_unset() {
     if (osd_got_home == 1)
     {
         // JRChange: osd_home_alt: check for stable osd_alt (must be stable for 75*40ms = 3s)
@@ -830,23 +831,12 @@ void set_home_altitude_if_unset()
     }
 }
 
-// After compartmentalizing it, I'm not sure why this is a discrete routine. 
-// Why bundle these things together? And what does CWH stand for anyhow? -- SLG
-void draw_CWH(void) {
-  
-  set_home_position_if_unset();
-  set_home_altitude_if_unset();
-  
+// Set home distance and bearing, if we know where home is
+void set_home_distance_and_bearing() {
   if (osd_got_home == 1) {
     osd_home_distance = get_distance_from_home_in_meters();    
     osd_home_bearing = get_bearing_to_home_in_degrees();
   }
-
-  draw_distance_to_home();
-  draw_distance_to_waypoint();
-      
-  draw_head_wp_home();
-  draw_osd_linear_compass();
 }
 
 // direction - scale mode

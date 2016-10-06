@@ -605,20 +605,16 @@ void PLANE3D_Init(PLANE3D_PTR plane, POINT3D_PTR p0, VECTOR3D_PTR normal,
 } // end PLANE3D_Init
 
 
-float Convert_Angle_To_Radians(float angle)
-{
+float Convert_Angle_To_Radians(float angle) {
     // convert ang to radians
-    float theta = (angle) * M_PI / 180.0;
-    return theta;
+    return (angle) * M_PI / 180.0;
 }
 
-float Convert_Radians_To_Angle(float radians)
-{
+float Convert_Radians_To_Angle(float radians) {
     return radians * (180 / M_PI);
 }
 
 void Build_Sin_Cos_Tables(void) {
-
 // create sin/cos lookup table
 // note the creation of one extra element; 360
 // this helps with logic in using the tables
@@ -630,9 +626,7 @@ void Build_Sin_Cos_Tables(void) {
     // insert next entry into table
     my_cos_look[ang] = cosf(theta);
     my_sin_look[ang] = sinf(theta);
-
   }   // end for ang
-
 } // end Build_Sin_Cos_Tables
 
 
