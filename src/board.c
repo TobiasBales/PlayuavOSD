@@ -246,7 +246,7 @@ void triggerVideo(void) {
   else if (eeprom_buffer.params.PWM_Video_ch == 15) video_ch_raw = osd_chan15_raw;
   else if (eeprom_buffer.params.PWM_Video_ch == 16) video_ch_raw = osd_chan16_raw;
 
-  if (eeprom_buffer.params.PWM_Panel_mode == 0) {
+  if (eeprom_buffer.params.PWM_Video_mode == 0) {
     if (video_ch_raw > eeprom_buffer.params.PWM_Video_value) {
       if (!video_trigger) {
         video_trigger = true;
