@@ -264,9 +264,8 @@ void parseMavlink(void) {
         if (current_mission_item_req_index == seq)
         {
           //store the waypoints
-          if ((cmd == 16) && (wp_counts < MAX_WAYPOINTS))
+          if ((cmd == MAV_CMD_NAV_WAYPOINT) && (wp_counts < MAX_WAYPOINTS))
           {
-
             wp_list[wp_counts].seq = seq;
             wp_list[wp_counts].cmd = cmd;
 

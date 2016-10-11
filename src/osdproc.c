@@ -1948,47 +1948,53 @@ void draw_map(void) {
   float rect_diagonal_half = sqrt(dstlat * dstlat + dstlon * dstlon) / 2;
 
   VERTEX2DF tmp_point;
+  
+  // Translate to screen coordinates for waypoints (if any)
   for (int i = 1; i < wp_counts; i++)
   {
     wps_screen_point[i] = gps_to_screen_pixel(wp_list[i].x, wp_list[i].y, cent_lat, cent_lon,
                                               rect_diagonal_half, cent_x, cent_y, radius);
   }
 
+  // Translate to screen coordinates for UAV (if GPS location known)
   if (osd_fix_type > 1) {
     tmp_point = gps_to_screen_pixel(uav_lat, uav_lon, cent_lat, cent_lon,
                                     rect_diagonal_half, cent_x, cent_y, radius);
     uav_x = tmp_point.x;
     uav_y = tmp_point.y;
   }
-
+  
+  // Translate to screen coordinates for home (if home is set)
+  // Note that home is [0] in the wps_screen_point array, and waypoints are [1] - [X].
   if (osd_got_home == 1) {
     wps_screen_point[0] = gps_to_screen_pixel(home_lat, home_lon, cent_lat, cent_lon,
                                               rect_diagonal_half, cent_x, cent_y, radius);
   }
 
-  //draw line
+  // Draw lines between all waypoints (if any)
   for (int i = 1; i < wp_counts - 1; i++)
   {
     write_line_outlined(wps_screen_point[i].x, wps_screen_point[i].y, wps_screen_point[i + 1].x, wps_screen_point[i + 1].y, 2, 2, 0, 1);
   }
 
-  if (osd_got_home == 1) {
+  // If home is set, and we have at least one waypoint, draw line between home and first waypoint
+  if (osd_got_home == 1 && wp_counts > 1) {
     write_line_outlined(wps_screen_point[0].x, wps_screen_point[0].y, wps_screen_point[1].x, wps_screen_point[1].y, 2, 2, 0, 1);
-//        write_line_outlined(wps_screen_point[0].x, wps_screen_point[0].y, wps_screen_point[wp_counts-1].x, wps_screen_point[wp_counts-1].y, 2, 2, 0, 1);
   }
 
-  //draw number
+  // Draw waypoint numbers (if any)
   for (int i = 1; i < wp_counts; i++)
   {
     sprintf(tmp_str, "%d", wp_list[i].seq);
     write_string(tmp_str, wps_screen_point[i].x, wps_screen_point[i].y, 0, 0, eeprom_buffer.params.Map_V_align, eeprom_buffer.params.Map_H_align, 0, SIZE_TO_FONT[eeprom_buffer.params.Map_fontsize]);
   }
 
-  //draw home
+  // Draw home (if home is set)
   if (osd_got_home == 1) {
     write_string("H", wps_screen_point[0].x, wps_screen_point[0].y, 0, 0, eeprom_buffer.params.Map_V_align, eeprom_buffer.params.Map_H_align, 0, SIZE_TO_FONT[eeprom_buffer.params.Map_fontsize]);
   }
 
+  // Draw UAV (if GPS location known)
   if (osd_fix_type > 1) {
     //draw heading
     POLYGON2D suav;
