@@ -190,9 +190,9 @@ void RenderScreen(void) {
 
   set_home_position_if_unset();
   set_home_altitude_if_unset();
-  
+
   set_home_distance_and_bearing();
-  
+
   draw_flight_mode();
   draw_arm_state();
   draw_battery_voltage();
@@ -222,7 +222,7 @@ void RenderScreen(void) {
   draw_total_trip();
   draw_time();
   draw_distance_to_home();
-  draw_distance_to_waypoint();     
+  draw_distance_to_waypoint();
   draw_head_wp_home();
   draw_osd_linear_compass();
   draw_climb_rate();
@@ -406,7 +406,7 @@ void draw_home_direction_debug_info(int x, int y, float bearing)
   sprintf(tmp_str, "ohb %d", (int32_t)osd_home_bearing);
   write_string(tmp_str, x, y + 30, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
   sprintf(tmp_str, "oh %d", (int32_t)osd_heading);
-  write_string(tmp_str, x, y + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);   
+  write_string(tmp_str, x, y + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
 }
 
 
@@ -718,22 +718,22 @@ void draw_time() {
 
 // Haversine distance
 // http://www.movable-type.co.uk/scripts/latlong.html
-float get_distance_between_locations_in_meters(float lat_from, 
-                                               float lon_from, 
-                                               float lat_to, 
+float get_distance_between_locations_in_meters(float lat_from,
+                                               float lon_from,
+                                               float lat_to,
                                                float lon_to) {
     float R = 6371e3; // metres
-    
+
     lat_from = lat_from / DEGREE_MULTIPLIER;
     lon_from = lon_from / DEGREE_MULTIPLIER;
     lat_to = lat_to / DEGREE_MULTIPLIER;
     lon_to = lon_to / DEGREE_MULTIPLIER;
-    
+
     float phi_one = Convert_Angle_To_Radians(lat_from);
     float phi_two = Convert_Angle_To_Radians(lat_to);
     float delta_phi = Convert_Angle_To_Radians(lat_to - lat_from);
     float delta_lambda = Convert_Angle_To_Radians(lon_to - lon_from);
-    
+
     // I suggest we avoid using optimized math functions until we have
     // something working well. -- SLG
     float a = sin(delta_phi/2) * sin(delta_phi/2) +
@@ -760,17 +760,17 @@ float get_bearing_to_home_in_degrees() {
     float y = sin(delta_lambda) * cos(phi_2);
     float x = cos(phi_1) * sin(phi_2) -
               sin(phi_1) * cos(phi_2) * cos(delta_lambda);
-    float theta = atan2(y, x);          
+    float theta = atan2(y, x);
     float final_angle = fmod((Convert_Radians_To_Angle(theta)+360.0f), 360.0f);
     return final_angle;
 }
 
 void draw_distance_to_home() {
-    if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_home_dist_en, 
+    if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_home_dist_en,
                               eeprom_buffer.params.CWH_home_dist_panel)) {
       return;
     }
-        
+
     float tmp = osd_home_distance * convert_distance;
     if (tmp < convert_distance_divider) {
       sprintf(tmp_str, "H %d%s", (int)tmp, dist_unit_short);
@@ -779,15 +779,15 @@ void draw_distance_to_home() {
       sprintf(tmp_str, "H %0.2f%s", (double)(tmp / convert_distance_divider), dist_unit_long);
     }
 
-    write_string(tmp_str, eeprom_buffer.params.CWH_home_dist_posX, eeprom_buffer.params.CWH_home_dist_posY, 0, 0, TEXT_VA_TOP, eeprom_buffer.params.CWH_home_dist_align, 0, SIZE_TO_FONT[eeprom_buffer.params.CWH_home_dist_fontsize]);  
+    write_string(tmp_str, eeprom_buffer.params.CWH_home_dist_posX, eeprom_buffer.params.CWH_home_dist_posY, 0, 0, TEXT_VA_TOP, eeprom_buffer.params.CWH_home_dist_align, 0, SIZE_TO_FONT[eeprom_buffer.params.CWH_home_dist_fontsize]);
 }
 
 void draw_distance_to_waypoint() {
-  if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_wp_dist_en, 
+  if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_wp_dist_en,
                               eeprom_buffer.params.CWH_wp_dist_panel)) {
       return;
-  } 
-    
+  }
+
     if (wp_number != 0) {
          float tmp = wp_dist * convert_distance;
          if (tmp < convert_distance_divider) {
@@ -809,7 +809,7 @@ void set_home_position_if_unset() {
     osd_home_lon = osd_lon;
     osd_alt_cnt = 0;
     osd_got_home = 1;
-  }    
+  }
 }
 
 void set_home_altitude_if_unset() {
@@ -834,18 +834,18 @@ void set_home_altitude_if_unset() {
 // Set home distance and bearing, if we know where home is
 void set_home_distance_and_bearing() {
   if (osd_got_home == 1) {
-    osd_home_distance = get_distance_from_home_in_meters();    
+    osd_home_distance = get_distance_from_home_in_meters();
     osd_home_bearing = get_bearing_to_home_in_degrees();
   }
 }
 
 // direction - scale mode
 void draw_osd_linear_compass() {
-  if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_Tmode_en, 
+  if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_Tmode_en,
                               eeprom_buffer.params.CWH_Tmode_panel)) {
       return;
   }
-  
+
   draw_linear_compass(osd_heading, 0, 120, 180, GRAPHICS_X_MIDDLE, eeprom_buffer.params.CWH_Tmode_posY, 15, 30, 5, 8, 0);
 }
 
@@ -934,7 +934,7 @@ void draw_rssi() {
   }
 
   write_string(tmp_str, eeprom_buffer.params.RSSI_posX,
-               eeprom_buffer.params.RSSI_posY, 0, 0, TEXT_VA_MIDDLE,
+               eeprom_buffer.params.RSSI_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.RSSI_align, 0,
                SIZE_TO_FONT[eeprom_buffer.params.RSSI_fontsize]);
 }
@@ -984,7 +984,7 @@ void draw_link_quality() {
   }
 
   write_string(tmp_str, eeprom_buffer.params.LinkQuality_posX,
-               eeprom_buffer.params.LinkQuality_posY, 0, 0, TEXT_VA_MIDDLE,
+               eeprom_buffer.params.LinkQuality_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.LinkQuality_align, 0,
                SIZE_TO_FONT[eeprom_buffer.params.LinkQuality_fontsize]);
 }
@@ -1342,7 +1342,7 @@ void draw_head_wp_home() {
                               eeprom_buffer.params.CWH_Nmode_panel)) {
     return;
   }
-    
+
   int posX, posY, r;
   char tmp_str[10] = { 0 };
 
