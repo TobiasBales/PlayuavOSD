@@ -415,7 +415,14 @@ void draw_home_direction() {
                               eeprom_buffer.params.HomeDirection_panel)) {
     return;
   }
-  float bearing = osd_home_bearing - osd_heading;
+  
+  // Bearing to home should consistently show 0 degrees (north) until 
+  // home position is actually set
+  float bearing = 0.0f;
+  if (osd_got_home == 1) {
+      bearing = osd_home_bearing - osd_heading;
+  }
+  
   Reset_Polygon2D(&home_direction);
   Reset_Polygon2D(&home_direction_outline);
   Rotate_Polygon2D(&home_direction, bearing);
@@ -424,15 +431,18 @@ void draw_home_direction() {
   const int x = home_direction.x0;
   const int y = home_direction.y0;
 
-
-  for (int i = 0; i < home_direction.num_verts; i += 2) {
-    write_line_lm(home_direction.vlist_trans[i].x + x,
-                  home_direction.vlist_trans[i].y + y,
-                  home_direction.vlist_trans[i + 1].x + x,
-                  home_direction.vlist_trans[i + 1].y + y,
-                  1, 1);
+  // Only fill in interior if home has been set
+  if (osd_got_home == 1) {
+      for (int i = 0; i < home_direction.num_verts; i += 2) {
+        write_line_lm(home_direction.vlist_trans[i].x + x,
+                      home_direction.vlist_trans[i].y + y,
+                      home_direction.vlist_trans[i + 1].x + x,
+                      home_direction.vlist_trans[i + 1].y + y,
+                      1, 1);
+      }
   }
-
+  
+  // Always show the outline
   for (int i = 0; i < home_direction.num_verts; i += 2) {
     write_line_lm(home_direction_outline.vlist_trans[i].x + x,
                   home_direction_outline.vlist_trans[i].y + y,
@@ -746,12 +756,22 @@ float get_distance_between_locations_in_meters(float lat_from,
 }
 
 float get_distance_from_home_in_meters() {
+    // Distance to home is always 0.0 if home isn't set yet
+    if (osd_got_home == 0) {
+        return 0.0f;
+    }    
+    
     return get_distance_between_locations_in_meters(osd_home_lat, osd_home_lon, osd_lat, osd_lon);
 }
 
 // Thanks again to:
 // http://www.movable-type.co.uk/scripts/latlong.html
-float get_bearing_to_home_in_degrees() {
+float get_bearing_to_home_in_degrees() {    
+    // Bearing to home is always 0 (north) if home isn't set yet
+    if (osd_got_home == 0) {
+        return 0.0f;
+    }    
+    
     float phi_1 = Convert_Angle_To_Radians(osd_lat / DEGREE_MULTIPLIER);
     float phi_2 = Convert_Angle_To_Radians(osd_home_lat / DEGREE_MULTIPLIER);
     float delta_lambda = Convert_Angle_To_Radians((osd_home_lon / DEGREE_MULTIPLIER) - (osd_lon / DEGREE_MULTIPLIER));
@@ -772,13 +792,18 @@ void draw_distance_to_home() {
     }
 
     float tmp = osd_home_distance * convert_distance;
-    if (tmp < convert_distance_divider) {
-      sprintf(tmp_str, "H %d%s", (int)tmp, dist_unit_short);
-    }
-    else {
-      sprintf(tmp_str, "H %0.2f%s", (double)(tmp / convert_distance_divider), dist_unit_long);
-    }
-
+   
+    // If home not set, give some indication that distance to home is currently meaningless
+    if (osd_got_home == 0) {
+        sprintf(tmp_str, "H -%s", (int)tmp, dist_unit_short);
+    // Display short units (meters/feet)
+    } else if (tmp < convert_distance_divider) {
+        sprintf(tmp_str, "H %d%s", (int)tmp, dist_unit_short);
+    // Display long units (kilometers/miles)
+    } else {
+        sprintf(tmp_str, "H %0.2f%s", (double)(tmp / convert_distance_divider), dist_unit_long);
+    }    
+  
     write_string(tmp_str, eeprom_buffer.params.CWH_home_dist_posX, eeprom_buffer.params.CWH_home_dist_posY, 0, 0, TEXT_VA_TOP, eeprom_buffer.params.CWH_home_dist_align, 0, SIZE_TO_FONT[eeprom_buffer.params.CWH_home_dist_fontsize]);
 }
 
@@ -1369,9 +1394,9 @@ void draw_head_wp_home() {
   write_line_outlined(suav.vlist_trans[0].x + suav.x0, suav.vlist_trans[0].y + suav.y0,
                       suav.vlist_trans[2].x + suav.x0, suav.vlist_trans[2].y + suav.y0, 2, 2, 0, 1);
 
-  // draw home
-  // the home only shown when the distance above 1m
-  if (((int32_t)osd_home_distance > 1))
+  // Draw home 
+  // Home only shown when home is set, and the distance to home is greater than 1 meter
+  if ((osd_got_home == 1) && ((int32_t)osd_home_distance > 1))    
   {
     float homeCX = posX + (eeprom_buffer.params.CWH_Nmode_home_radius) * Fast_Sin(osd_home_bearing);
     float homeCY = posY - (eeprom_buffer.params.CWH_Nmode_home_radius) * Fast_Cos(osd_home_bearing);
