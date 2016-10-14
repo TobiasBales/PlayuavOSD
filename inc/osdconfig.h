@@ -6,6 +6,12 @@
 #define EEPROM_START_ADDR               0x080E0000              //Base @ of Sector 11
 #define EERROM_SIZE                             1024
 
+// Version number: major.minor.revision (1.2.6 for example)
+#define PLAYUAV_VERSION_NUMBER          "1.1.1"
+// Change this to distinguish the release in some fashion that
+// version number doesn't cover
+#define PLAYUAV_VERSION_DESCRIPTION     "SLG BETA 1"
+
 void vTaskVCP(void *pvParameters);
 
 void LoadParams(void);
@@ -353,6 +359,11 @@ typedef union {
     uint16_t Watts_posY;
     uint16_t Watts_fontsize;
     uint16_t Watts_align;
+    
+    // From firmware_ver 11, PLAYUAV_VERSION 1.1.1
+    
+    // Number of milliseconds to show the version splash panel
+    uint16_t version_splash_milliseconds_to_show;
 
 //		//below is unused. if add a param, reduce one item here
 //		uint16_t unused[EERROM_SIZE/2 - 104];

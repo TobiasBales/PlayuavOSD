@@ -436,7 +436,13 @@ void checkDefaultParam() {
     eeprom_buffer.params.LinkQuality_chan = 0;
     bNeedUpdateFlash = true;
   }
-
+  
+  if (eeprom_buffer.params.firmware_ver < 11) {
+    eeprom_buffer.params.firmware_ver = 11;
+    eeprom_buffer.params.version_splash_milliseconds_to_show = 5000;
+    bNeedUpdateFlash = true;
+  } 
+  
   bool ret = false;
   if (bNeedUpdateFlash)
   {
@@ -447,6 +453,8 @@ void checkDefaultParam() {
     }
   }
 }
+
+
 
 bool test_force_clear_all_params(void) {
   volatile unsigned samples = 0;

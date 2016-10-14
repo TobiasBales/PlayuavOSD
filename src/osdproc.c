@@ -39,6 +39,10 @@ int32_t test_alt, test_speed, test_throttle;
 //2:small, 0:normal, 3:large
 const int SIZE_TO_FONT[3] = { 2, 0, 3 };
 
+// The bool is because I fear overflow on the milliseconds elapsed calculation
+bool version_splash_shown = false;
+int32_t version_splash_start_time = 0;
+
 uint8_t last_panel = 1;
 int32_t new_panel_start_time = 0;
 
@@ -233,8 +237,10 @@ void RenderScreen(void) {
   draw_wind();
   draw_map();
 
+  draw_warning();  
   draw_panel_changed();
-  draw_warning();
+  
+  draw_version_splash();
 }
 
 void draw_uav3d(void) {
@@ -1058,6 +1064,66 @@ void draw_panel_changed() {
                  TEXT_HA_CENTER, 0, SIZE_TO_FONT[1]);
   }
 }
+
+// Version splash screen that appears at startup
+void draw_version_splash() {  
+
+  // We're done showing it
+  if (version_splash_shown == true) {
+      return;
+  }
+    // If time to show is 0, don't show at all  
+    if (eeprom_buffer.params.version_splash_milliseconds_to_show == 0){
+      return;
+  }
+  
+  // If we've already shown the splash long enough, no need to show any more
+  uint32_t milliseconds_elapsed_since_boot = (GetSystimeMS() - version_splash_start_time);
+  if (milliseconds_elapsed_since_boot > eeprom_buffer.params.version_splash_milliseconds_to_show) {
+      // We've shown it long enough, mark it shown
+      version_splash_shown = true;
+      return;          
+  }
+
+  // Take note of the first time we start showing the splash screen
+  if (version_splash_start_time == 0) {
+    version_splash_start_time = GetSystimeMS();
+  }
+        
+  // Show the splash screen  
+  int font_number_line_one = 0;
+  struct FontEntry font_info_line_one;
+  fetch_font_info(0, font_number_line_one, &font_info_line_one, NULL);      
+  char version_str_line_one[15];
+  struct FontDimensions line_one_font_dim;
+  memset (version_str_line_one, ' ', 15);    
+  sprintf(version_str_line_one, "PLAYUAV V%s", PLAYUAV_VERSION_NUMBER);
+  calc_text_dimensions(version_str_line_one, font_info_line_one, 1, 0, &line_one_font_dim);
+  
+  int font_number_line_two = 1;  
+  struct FontEntry font_info_line_two;  
+  fetch_font_info(0, font_number_line_two, &font_info_line_two, NULL);      
+  char version_str_line_two[15];
+  struct FontDimensions line_two_font_dim;    
+  memset (version_str_line_two, ' ', 15);    
+  sprintf(version_str_line_two, "%s", PLAYUAV_VERSION_DESCRIPTION);
+  calc_text_dimensions(version_str_line_two, font_info_line_two, 1, 0, &line_two_font_dim);    
+  
+  int horizontal_padding = 20;
+  int vertical_padding = 20;
+  int splash_box_width = MAX(line_one_font_dim.width, line_two_font_dim.width) + (horizontal_padding * 2);
+  int splash_box_height = line_one_font_dim.height + line_two_font_dim.height + (vertical_padding * 2);
+  int splash_rect_x = GRAPHICS_X_MIDDLE - (splash_box_width / 2);
+  int splash_rect_y = GRAPHICS_Y_MIDDLE - (splash_box_height / 2);
+  int text_pos_x = GRAPHICS_X_MIDDLE; 
+  int text_pos_y = GRAPHICS_Y_MIDDLE; 
+  
+  write_filled_rectangle_lm(splash_rect_x, splash_rect_y, splash_box_width, splash_box_height, 1, 0);
+  write_rectangle_outlined(splash_rect_x, splash_rect_y, splash_box_width, splash_box_height, 0, 1);
+  write_string(version_str_line_one, text_pos_x, text_pos_y, 1, 0, TEXT_VA_MIDDLE, TEXT_HA_CENTER, 0, font_number_line_one);
+  write_string(version_str_line_two, text_pos_x, text_pos_y + line_one_font_dim.height, 1, 0, TEXT_VA_MIDDLE, TEXT_HA_CENTER, 0, font_number_line_two);
+}
+
 
 /**
  * hud_draw_compass: Draw a compass.
