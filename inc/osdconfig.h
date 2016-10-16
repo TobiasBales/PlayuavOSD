@@ -10,7 +10,7 @@
 #define PLAYUAV_VERSION_NUMBER          "1.1.1"
 // Change this to distinguish the release in some fashion that
 // version number doesn't cover
-#define PLAYUAV_VERSION_DESCRIPTION     "SLG BETA 1"
+#define PLAYUAV_VERSION_DESCRIPTION     "SLG BETA 2"
 
 void vTaskVCP(void *pvParameters);
 
@@ -360,11 +360,14 @@ typedef union {
     uint16_t Watts_fontsize;
     uint16_t Watts_align;
     
-    // From firmware_ver 11, PLAYUAV_VERSION 1.1.1
+    // From firmware_ver 11, PLAYUAV_VERSION 1.1.1, "SLG BETA 1"
     
     // Number of milliseconds to show the version splash panel
     uint16_t version_splash_milliseconds_to_show;
-
+    
+    // From firmware_ver 12, PLAYUAV_VERSION 1.1.1, "SLG BETA 2"    
+    uint16_t error_alert_milliseconds_to_show;
+    
 //		//below is unused. if add a param, reduce one item here
 //		uint16_t unused[EERROM_SIZE/2 - 104];
   }params;

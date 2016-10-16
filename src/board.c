@@ -441,7 +441,13 @@ void checkDefaultParam() {
     eeprom_buffer.params.firmware_ver = 11;
     eeprom_buffer.params.version_splash_milliseconds_to_show = 5000;
     bNeedUpdateFlash = true;
-  } 
+  }
+  
+  if (eeprom_buffer.params.firmware_ver < 12) {
+    eeprom_buffer.params.firmware_ver = 12;
+    eeprom_buffer.params.error_alert_milliseconds_to_show = 1000;
+    bNeedUpdateFlash = true;
+  }
   
   bool ret = false;
   if (bNeedUpdateFlash)

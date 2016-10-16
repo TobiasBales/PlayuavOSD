@@ -5,12 +5,14 @@
 
 /// GPS status codes
 enum GPS_Status {
-  NO_GPS = 0,                   ///< No GPS connected/detected
-  NO_FIX = 1,                   ///< Receiving valid GPS messages but no lock
-  GPS_OK_FIX_2D = 2,            ///< Receiving valid messages and 2D lock
-  GPS_OK_FIX_3D = 3,            ///< Receiving valid messages and 3D lock
-  GPS_OK_FIX_3D_DGPS = 4,       ///< Receiving valid messages and 3D lock with differential improvements
-  GPS_OK_FIX_3D_RTK = 5,        ///< Receiving valid messages and 3D lock, with relative-positioning improvements
+  NO_GPS = 0,                     ///< No GPS connected/detected
+  NO_FIX = 1,                     ///< Receiving valid GPS messages but no lock
+  GPS_OK_FIX_2D = 2,              ///< Receiving valid messages and 2D lock
+  GPS_OK_FIX_3D = 3,              ///< Receiving valid messages and 3D lock
+  GPS_OK_FIX_3D_DGPS = 4,         ///< Receiving valid messages and 3D lock with differential improvements
+  GPS_OK_FIX_3D_RTK_FLOAT = 5,    ///< Receiving valid messages and 3D lock, with relative-positioning improvements (RTK Float, 3D Position)
+  GPS_OK_FIX_TYPE_RTK_FIXED = 6,  ///< Receiving valid messages and 3D lock, with relative-positioning improvements (RTK Fixed, 3D Position)
+  GPS_OK_FIX_TYPE_STATIC = 7      ///< Static fixed, typically used for base stations  
 };
 
 void vTaskOSD(void *pvParameters);
