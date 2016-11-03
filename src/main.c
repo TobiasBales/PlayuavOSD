@@ -15,12 +15,14 @@
  */
 
 #include "board.h"
+#include "osdvar.h"
 
 uint64_t u64Ticks = 0;        // Counts OS ticks (default = 1000Hz).
 uint64_t u64IdleTicks = 0;    // Value of u64IdleTicksCnt is copied once per sec.
 uint64_t u64IdleTicksCnt = 0; // Counts when the OS has no task to execute.
 bool stackOverflow = false;
 
+// Intra-task communication semaphores
 xSemaphoreHandle onScreenDisplaySemaphore;
 xSemaphoreHandle onMavlinkSemaphore;
 xSemaphoreHandle onUAVTalkSemaphore;
@@ -33,12 +35,11 @@ xSemaphoreHandle onUAVTalkSemaphore;
 int main(void) {
   /* enable FPU on Cortex-M4F core */
   SCB_CPACR |= ((3UL << 10 * 2) | (3UL << 11 * 2));   /* set CP10 Full Access and set CP11 Full Access */
-
-
-  vSemaphoreCreateBinary(onScreenDisplaySemaphore);
-  vSemaphoreCreateBinary(onMavlinkSemaphore);
-  vSemaphoreCreateBinary(onUAVTalkSemaphore);
-
+    
+  task_semaphores_init();
+  variable_mutexes_init();
+  clear_certain_global_mutexed_structs();
+  
   board_init();
   module_init();
 
@@ -73,4 +74,3 @@ void vApplicationStackOverflowHook(uintptr_t pxTask, signed char * pcTaskName) {
   wait_here = true;
 #endif
 }
-

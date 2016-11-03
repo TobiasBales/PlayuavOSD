@@ -24,6 +24,9 @@
 extern xSemaphoreHandle onUAVTalkSemaphore;
 extern uint8_t *mavlink_buffer_proc;
 
+// This is the OSD state that the UAVTalk thread owns
+osd_state uavtalk_osd_state;
+
 static unsigned long last_gcstelemetrystats_send = 0;
 static unsigned long last_flighttelemetry_connect = 0;
 static uint8_t gcstelemetrystatus = TELEMETRYSTATS_STATE_DISCONNECTED;
@@ -292,7 +295,9 @@ void parseUAVTalk(void) {
 //	uint8_t show_prio_info = 0;
   uint8_t c;
   uint32_t index = 0;
-
+  float osd_lat_current;
+  float osd_lon_current;
+  
 #ifdef FLIGHT_BATT_ON_REVO
   if (gcstelemetrystatus == TELEMETRYSTATS_STATE_CONNECTED && !inited) {
     /* Request flight battery settings */
@@ -300,6 +305,7 @@ void parseUAVTalk(void) {
     inited = 1;
   }
 #endif
+
 
 
   while (index < MAVLINK_BUFFER_SIZE)
@@ -330,13 +336,14 @@ void parseUAVTalk(void) {
       case ATTITUDESTATE_OBJID:
         last_flighttelemetry_connect = GetSystimeMS();
 //					show_prio_info = 1;
-        osd_roll                = (int16_t) uavtalk_get_float(&msg, ATTITUDEACTUAL_OBJ_ROLL);
-        osd_pitch               = (int16_t) uavtalk_get_float(&msg, ATTITUDEACTUAL_OBJ_PITCH);
-        osd_yaw                 = (int16_t) uavtalk_get_float(&msg, ATTITUDEACTUAL_OBJ_YAW);
-        // if we don't have a GPS, use Yaw for heading
-        if (osd_lat == 0) {
-          osd_heading = osd_yaw;
-        }
+        uavtalk_osd_state.osd_roll                = (int16_t) uavtalk_get_float(&msg, ATTITUDEACTUAL_OBJ_ROLL);
+        uavtalk_osd_state.osd_pitch               = (int16_t) uavtalk_get_float(&msg, ATTITUDEACTUAL_OBJ_PITCH);
+        uavtalk_osd_state.osd_yaw                 = (int16_t) uavtalk_get_float(&msg, ATTITUDEACTUAL_OBJ_YAW);
+        
+        // if we don't have a GPS, use Yaw for heading        
+         if (osd_lat_current == 0) {
+           uavtalk_osd_state.osd_heading = uavtalk_osd_state.osd_yaw;
+         }
         break;
       case FLIGHTSTATUS_OBJID:
       case FLIGHTSTATUS_OBJID_001:
@@ -345,13 +352,15 @@ void parseUAVTalk(void) {
       case FLIGHTSTATUS_OBJID_004:
       case FLIGHTSTATUS_OBJID_005:
         //osd_armed		= uavtalk_get_int8(&msg, FLIGHTSTATUS_OBJ_ARMED);
-        custom_mode                = uavtalk_get_int8(&msg, FLIGHTSTATUS_OBJ_FLIGHTMODE);
+        uavtalk_osd_state.custom_mode                = uavtalk_get_int8(&msg, FLIGHTSTATUS_OBJ_FLIGHTMODE);
         break;
       case MANUALCONTROLCOMMAND_OBJID:
       case MANUALCONTROLCOMMAND_OBJID_001:
       case MANUALCONTROLCOMMAND_OBJID_002:
-        osd_throttle            = (int16_t) (100.0 * uavtalk_get_float(&msg, MANUALCONTROLCOMMAND_OBJ_THROTTLE));
-        if (osd_throttle < 0 || osd_throttle > 200) osd_throttle = 0;
+        uavtalk_osd_state.osd_throttle            = (int16_t) (100.0 * uavtalk_get_float(&msg, MANUALCONTROLCOMMAND_OBJ_THROTTLE));
+        if (uavtalk_osd_state.osd_throttle < 0 || uavtalk_osd_state.osd_throttle > 200) {
+            uavtalk_osd_state.osd_throttle = 0;
+        }
         // Channel mapping:
         // 0   is Throttle
         // 1-2 are Roll / Pitch
@@ -362,32 +371,37 @@ void parseUAVTalk(void) {
         // In OPOSD:
         // chanx_raw     used for menu navigation (Roll/pitch)
         // osd_chanx_raw used for panel navigation (Accessory)
-        osd_chan1_raw       = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_1);
-        osd_chan2_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_2);
-        osd_chan5_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_4);
-        osd_chan6_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_6);
-        osd_chan7_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_7);
-        osd_chan8_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_8);
+        uavtalk_osd_state.osd_chan1_raw       = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_1);
+        uavtalk_osd_state.osd_chan2_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_2);
+        uavtalk_osd_state.osd_chan5_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_4);
+        uavtalk_osd_state.osd_chan6_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_6);
+        uavtalk_osd_state.osd_chan7_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_7);
+        uavtalk_osd_state.osd_chan8_raw   = uavtalk_get_int16(&msg, MANUALCONTROLCOMMAND_OBJ_CHANNEL_8);
         break;
       case GPSPOSITION_OBJID:
       case GPSPOSITIONSENSOR_OBJID:
       case GPSPOSITIONSENSOR_OBJID_001:
-        osd_lat                 = uavtalk_get_int32(&msg, GPSPOSITION_OBJ_LAT);
-        osd_lon                 = uavtalk_get_int32(&msg, GPSPOSITION_OBJ_LON);
-        osd_satellites_visible  = uavtalk_get_int8(&msg, GPSPOSITION_OBJ_SATELLITES);
-        osd_fix_type            = uavtalk_get_int8(&msg, GPSPOSITION_OBJ_STATUS);
-        osd_heading             = uavtalk_get_float(&msg, GPSPOSITION_OBJ_HEADING);
-        osd_alt                 = uavtalk_get_float(&msg, GPSPOSITION_OBJ_ALTITUDE);
-        osd_groundspeed         = uavtalk_get_float(&msg, GPSPOSITION_OBJ_GROUNDSPEED);
+        osd_lat_current = uavtalk_get_int32(&msg, GPSPOSITION_OBJ_LAT);
+        osd_lon_current = uavtalk_get_int32(&msg, GPSPOSITION_OBJ_LON);
+
+        uavtalk_osd_state.osd_lat = osd_lat_current;
+        uavtalk_osd_state.osd_lon = osd_lon_current;
+                
+        uavtalk_osd_state.osd_satellites_visible  = uavtalk_get_int8(&msg, GPSPOSITION_OBJ_SATELLITES);
+        uavtalk_osd_state.osd_fix_type            = uavtalk_get_int8(&msg, GPSPOSITION_OBJ_STATUS);
+        uavtalk_osd_state.osd_heading             = uavtalk_get_float(&msg, GPSPOSITION_OBJ_HEADING);        
+        uavtalk_osd_state.osd_alt = uavtalk_get_float(&msg, GPSPOSITION_OBJ_ALTITUDE);
+        
+        uavtalk_osd_state.osd_groundspeed         = uavtalk_get_float(&msg, GPSPOSITION_OBJ_GROUNDSPEED);
         break;
       case GPSVELOCITY_OBJID:
       case GPSVELOCITYSENSOR_OBJID:
-        osd_climb               = -1.0 * uavtalk_get_float(&msg, GPSVELOCITY_OBJ_DOWN);
+        uavtalk_osd_state.osd_climb               = -1.0 * uavtalk_get_float(&msg, GPSVELOCITY_OBJ_DOWN);
         break;
       case FLIGHTBATTERYSTATE_OBJID:
       case FLIGHTBATTERYSTATE_OBJID_001:
-        osd_vbat_A              = uavtalk_get_float(&msg, FLIGHTBATTERYSTATE_OBJ_VOLTAGE);
-        osd_curr_A              = (int16_t) (100.0 * uavtalk_get_float(&msg, FLIGHTBATTERYSTATE_OBJ_CURRENT));
+        uavtalk_osd_state.osd_vbat_A              = uavtalk_get_float(&msg, FLIGHTBATTERYSTATE_OBJ_VOLTAGE);
+        uavtalk_osd_state.osd_curr_A              = (int16_t) (100.0 * uavtalk_get_float(&msg, FLIGHTBATTERYSTATE_OBJ_CURRENT));
         //osd_total_A		= (int16_t) uavtalk_get_float(&msg, FLIGHTBATTERYSTATE_OBJ_CONSUMED_ENERGY);
         //osd_est_flight_time	= (int16_t) uavtalk_get_float(&msg, FLIGHTBATTERYSTATE_OBJ_ESTIMATED_FLIGHT_TIME);
         break;
@@ -425,13 +439,20 @@ void parseUAVTalk(void) {
 
 }
 
+void copyNewUavtalkValuesToAirlock() {
+    // Uavtalk is presumed to be the slower thread, and more tolerant of delays. Therefore
+    // we use a large timeout for the Mutex.
+    copy_osd_state(&uavtalk_osd_state, &airlock_osd_state, portMAX_DELAY);
+}
+
 void UAVTalkTask(void *pvParameters) {
   mavlink_usart_init(get_map_bandrate(eeprom_buffer.params.uart_bandrate));
-  sys_start_time = GetSystimeMS();
+  set_sys_start_time(GetSystimeMS());
 
   while (1)
   {
     xSemaphoreTake(onUAVTalkSemaphore, portMAX_DELAY);
     parseUAVTalk();
+    copyNewUavtalkValuesToAirlock();    
   }
 }

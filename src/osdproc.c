@@ -1,4 +1,5 @@
 /*
+/*
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -33,6 +34,14 @@
 #define HUD_VSCALE_FLAG_NO_NEGATIVE 2
 
 extern xSemaphoreHandle onScreenDisplaySemaphore;
+
+extern xSemaphoreHandle osd_state_adhoc_mutex;
+
+// This is the OSD state that the OSDProc thread owns
+osd_state osdproc_osd_state = {};
+
+// This mutex controls access to the OSDProc OSD State
+xSemaphoreHandle osd_state_osdproc_mutex;
 
 int32_t test_alt, test_speed, test_throttle;
 
@@ -152,33 +161,86 @@ void do_converts(void) {
 }
 
 bool shownAtPanel(uint16_t itemPanel) {
-  //issue #1 - fixed
-  return ((itemPanel & (1 << (current_panel - 1))) != 0);
+  bool result = false;
+  if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+      //issue #1 - fixed
+      result = ((itemPanel & (1 << (adhoc_osd_state.current_panel - 1))) != 0);
+      // Release the ad-hoc mutex      
+      xSemaphoreGive(osd_state_adhoc_mutex);
+  }  
+  return result;
 }
 
 bool enabledAndShownOnPanel(uint16_t enabled, uint16_t panel) {
   return enabled == 1 && shownAtPanel(panel);
 }
 
+void copyNewAirlockValuesToOsdProc() {
+    // Considered using a deliberately short delay here, but it seems ok this way.
+    copy_osd_state(&airlock_osd_state, &osdproc_osd_state, portMAX_DELAY);
+}
+
+void getOsdXandYOffsets(int8_t * p_osd_offset_X, int8_t * p_osd_offset_Y) {
+  if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+      // Get the OSD offsets
+      *p_osd_offset_X = adhoc_osd_state.osd_offset_X;
+      *p_osd_offset_Y = adhoc_osd_state.osd_offset_Y;
+      // Release the ad-hoc mutex      
+      xSemaphoreGive(osd_state_adhoc_mutex);
+  }        
+}
+
+void setOsdOffsets(){
+  int8_t TEMP_osd_offset_X;
+  int8_t TEMP_osd_offset_Y;  
+  
+  getOsdXandYOffsets(&TEMP_osd_offset_X, &TEMP_osd_offset_Y);  
+  
+  osdVideoSetXOffset(TEMP_osd_offset_X);
+  osdVideoSetYOffset(TEMP_osd_offset_Y); 
+}
+
 void vTaskOSD(void *pvParameters) {
+    
+  clear_osd_state_struct(&osdproc_osd_state);    
+    
   uav3D_init();
   uav2D_init();
   simple_attitude_init();
   home_direction_init();
 
-  osdVideoSetXOffset(osd_offset_X);
-  osdVideoSetYOffset(osd_offset_Y);
-
+  setOsdOffsets();  
   osdCoreInit();
 
-  for (;; )
+  while (1)
   {
     xSemaphoreTake(onScreenDisplaySemaphore, portMAX_DELAY);
+    
+    // Lock access to OSDProc OSD state via mutex
+    if (xSemaphoreTake(osd_state_osdproc_mutex, portMAX_DELAY) == pdTRUE ) {
+    
+        copyNewAirlockValuesToOsdProc();
+        clearGraphics();
+        RenderScreen();
 
-    clearGraphics();
-
-    RenderScreen();
+        // Release the Mavlink OSDState mutex
+        xSemaphoreGive(osd_state_osdproc_mutex);
+    }
+    // At this point OSDProc OSDState mutex is briefly open for access by others, should
+    // they need it. 
   }
+}
+
+void resetPanelNumberIfBadPanelValue(){
+  // Get ad-hoc mutex
+  if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+      // Reset panel to #1 if the panel number is out of range
+      if (adhoc_osd_state.current_panel < 1 || adhoc_osd_state.current_panel > eeprom_buffer.params.Max_panels) {
+        adhoc_osd_state.current_panel = 1;
+      }
+      // Release the ad-hoc mutex
+      xSemaphoreGive(osd_state_adhoc_mutex);
+    }  
 }
 
 // TODO: try if this is performance critical or not
@@ -188,9 +250,7 @@ char* tmp_str1 = "";
 void RenderScreen(void) {
   do_converts();
 
-  if (current_panel > eeprom_buffer.params.Max_panels) {
-    current_panel = 1;
-  }
+  resetPanelNumberIfBadPanelValue();
 
   set_home_position_if_unset();
   set_home_altitude_if_unset();
@@ -243,6 +303,17 @@ void RenderScreen(void) {
   draw_version_splash();
 }
 
+int get_map_radius() {
+  int map_radius = 0;
+  if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+      map_radius = (int)(eeprom_buffer.params.Atti_3D_map_radius * adhoc_osd_state.atti_3d_scale);
+      // Release the ad-hoc mutex
+      xSemaphoreGive(osd_state_adhoc_mutex);
+   }
+      
+   return map_radius;
+}
+
 void draw_uav3d(void) {
   if (!enabledAndShownOnPanel(eeprom_buffer.params.Atti_3D_en,
                               eeprom_buffer.params.Atti_3D_panel)) {
@@ -256,20 +327,20 @@ void draw_uav3d(void) {
   static int32_t yaw = 0;
   int x = eeprom_buffer.params.Atti_3D_posX;
   int y = eeprom_buffer.params.Atti_3D_posY;
-  int map_radius = (int)(eeprom_buffer.params.Atti_3D_map_radius * atti_3d_scale);
+  int map_radius = get_map_radius();
 
   write_string("N", x, y - map_radius, 0, 0, TEXT_VA_TOP, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
   write_string("E", x + map_radius, y, 0, 0, TEXT_VA_MIDDLE, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
   //need to adjust viewport base on the video mode
   Adjust_Viewport_CAM4DV1(&cam, GRAPHICS_RIGHT, GRAPHICS_BOTTOM);
 
-  roll = ((int32_t)osd_roll + 360) % 360;
+  roll = ((int32_t)osdproc_osd_state.osd_roll + 360) % 360;
   roll = fabs(roll - 360);
 
-  pitch = ((int32_t)osd_pitch + 360) % 360;
+  pitch = ((int32_t)osdproc_osd_state.osd_pitch + 360) % 360;
   pitch = fabs(pitch - 360);
 
-  yaw = fabs(osd_heading - 360);
+  yaw = fabs(osdproc_osd_state.osd_heading - 360);
 
   Reset_OBJECT4DV1(&uav3D);
 
@@ -322,9 +393,9 @@ void draw_uav3d(void) {
 
 void draw_simple_attitude() {
   Reset_Polygon2D(&simple_attitude);
-  int pitch = osd_pitch;
+  int pitch = osdproc_osd_state.osd_pitch;
   const int max_pitch = 60;
-  const int radius = 4 * atti_mp_scale;
+  const int radius = 4 * get_atti_mp_scale();
   const int x = simple_attitude.x0;
   const int y = simple_attitude.y0;
   if (pitch > max_pitch) {
@@ -338,7 +409,7 @@ void draw_simple_attitude() {
   write_line_outlined(x, y - radius - 1, x, y - 2 * radius, 0, 0, 0, 1);
   write_circle_outlined(x, y, radius, 0, 1, 0, 1);
 
-  Transform_Polygon2D(&simple_attitude, -osd_roll, 0, pitch);
+  Transform_Polygon2D(&simple_attitude, -osdproc_osd_state.osd_roll, 0, pitch);
   VECTOR4D v;
   for (int i = 0; i < simple_attitude.num_verts; i += 2) {
     write_line_outlined(simple_attitude.vlist_trans[i].x + x, simple_attitude.vlist_trans[i].y + y,
@@ -352,7 +423,7 @@ void draw_radar() {
   int index = 0;
 
   Reset_Polygon2D(&uav2D);
-  Transform_Polygon2D(&uav2D, -osd_roll, 0, osd_pitch);
+  Transform_Polygon2D(&uav2D, -osdproc_osd_state.osd_roll, 0, osdproc_osd_state.osd_pitch);
 
   // loop thru and draw a line from vertices 1 to n
   VECTOR4D v;
@@ -369,7 +440,7 @@ void draw_radar() {
 
   //rotate roll scale and display, we only cal x
   Reset_Polygon2D(&rollscale2D);
-  Rotate_Polygon2D(&rollscale2D, -osd_roll);
+  Rotate_Polygon2D(&rollscale2D, -osdproc_osd_state.osd_roll);
   for (index = 0; index < rollscale2D.num_verts - 1; index++)
   {
     // draw line from ith to ith+1 vertex
@@ -380,6 +451,7 @@ void draw_radar() {
 
   int x = eeprom_buffer.params.Atti_mp_posX;
   int y = eeprom_buffer.params.Atti_mp_posY;
+  float atti_mp_scale = get_atti_mp_scale();
   int wingStart = (int)(12.0f * atti_mp_scale);
   int wingEnd = (int)(7.0f * atti_mp_scale);
   char tmp_str[10] = { 0 };
@@ -391,7 +463,7 @@ void draw_radar() {
 
 
   write_filled_rectangle_lm(x - 9, y + 6, 15, 9, 0, 1);
-  sprintf(tmp_str, "%d", (int)osd_pitch);
+  sprintf(tmp_str, "%d", (int)osdproc_osd_state.osd_pitch);
   write_string(tmp_str, x, y + 5, 0, 0, TEXT_VA_TOP, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
 
   y = eeprom_buffer.params.Atti_mp_posY - (int)(38.0f * atti_mp_scale);
@@ -399,21 +471,11 @@ void draw_radar() {
   write_line_outlined(x, y, x - 4, y + 8, 2, 2, 0, 1);
   write_line_outlined(x, y, x + 4, y + 8, 2, 2, 0, 1);
   write_line_outlined(x - 4, y + 8, x + 4, y + 8, 2, 2, 0, 1);
-  sprintf(tmp_str, "%d", (int)osd_roll);
+  sprintf(tmp_str, "%d", (int)osdproc_osd_state.osd_roll);
   write_string(tmp_str, x, y - 3, 0, 0, TEXT_VA_BOTTOM, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
 }
 
-void draw_home_direction_debug_info(int x, int y, float bearing)
-{
-  // Debug output for direction to home calculation
-  char tmp_str[15] = { 0 };
-  sprintf(tmp_str, "b %d", (int32_t)bearing);
-  write_string(tmp_str, x, y + 15, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
-  sprintf(tmp_str, "ohb %d", (int32_t)osd_home_bearing);
-  write_string(tmp_str, x, y + 30, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
-  sprintf(tmp_str, "oh %d", (int32_t)osd_heading);
-  write_string(tmp_str, x, y + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[1]);
-}
+
 
 
 void draw_home_direction() {
@@ -421,33 +483,43 @@ void draw_home_direction() {
                               eeprom_buffer.params.HomeDirection_panel)) {
     return;
   }
+
+  // The absolute (0-360, 0 being north) bearing to home, 
+  // irrespective of the direction the UAV is oriented.
+  float absolute_home_bearing = get_osd_home_bearing();
+  // The UAV's current compass bearing (0-360, 0 being north). 
+  // This is the direction the UAV is facing.
+  float uav_compass_bearing = osdproc_osd_state.osd_heading;
+  // The UAV-relative (0-360, 0 being front of UAV) bearing to home. 
+  // This is the angle used for display of the direction-to-home arrow.
+  float relative_home_bearing = 0.0f;
   
   // Bearing to home should consistently show 0 degrees (north) until 
-  // home position is actually set
-  float bearing = 0.0f;
-  if (osd_got_home == 1) {
-      bearing = osd_home_bearing - osd_heading;
+  // home position is actually set.
+  int got_home = get_osd_got_home();
+  if (got_home == 1) {
+      relative_home_bearing = absolute_home_bearing - uav_compass_bearing;
   }
   
   Reset_Polygon2D(&home_direction);
   Reset_Polygon2D(&home_direction_outline);
-  Rotate_Polygon2D(&home_direction, bearing);
-  Rotate_Polygon2D(&home_direction_outline, bearing);
+  Rotate_Polygon2D(&home_direction, relative_home_bearing);
+  Rotate_Polygon2D(&home_direction_outline, relative_home_bearing);
 
   const int x = home_direction.x0;
   const int y = home_direction.y0;
 
   // Only fill in interior if home has been set
-  if (osd_got_home == 1) {
+  if (got_home == 1) {
       for (int i = 0; i < home_direction.num_verts; i += 2) {
         write_line_lm(home_direction.vlist_trans[i].x + x,
                       home_direction.vlist_trans[i].y + y,
                       home_direction.vlist_trans[i + 1].x + x,
                       home_direction.vlist_trans[i + 1].y + y,
                       1, 1);
-      }
-  }
-  
+      }      
+  }  
+
   // Always show the outline
   for (int i = 0; i < home_direction.num_verts; i += 2) {
     write_line_lm(home_direction_outline.vlist_trans[i].x + x,
@@ -458,7 +530,24 @@ void draw_home_direction() {
   }
 
   // For debugging the infamous bad home direction bug
-  //draw_home_direction_debug_info(x, y, bearing);
+  draw_home_direction_debug_info(x, y, absolute_home_bearing, uav_compass_bearing, relative_home_bearing);
+}
+
+// Debug output for direction to home calculation
+void draw_home_direction_debug_info(int x, int y, float absolute_home_bearing, float uav_compass_bearing, float relative_home_bearing)
+{
+  char tmp_str[15] = { 0 };
+  // font_index: 0 = small, 1 = medium, 2 = large
+  int font_index = 0;
+  
+  sprintf(tmp_str, "abs h.b. %d", (int32_t)absolute_home_bearing);
+  write_string(tmp_str, x, y + 15, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);
+  
+  sprintf(tmp_str, "rel h.b. %d", (int32_t)relative_home_bearing);
+  write_string(tmp_str, x, y + 30, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);
+  
+  sprintf(tmp_str, "comp. b %d", (int32_t)uav_compass_bearing);
+  write_string(tmp_str, x, y + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);  
 }
 
 void draw_uav2d() {
@@ -486,15 +575,15 @@ void draw_throttle(void) {
   posX = eeprom_buffer.params.Throt_posX;
   posY = eeprom_buffer.params.Throt_posY;
 
-  pos_th_y = (int16_t)(0.5 * osd_throttle);
+  pos_th_y = (int16_t)(0.5 * osdproc_osd_state.osd_throttle);
   pos_th_x = posX - 25 + pos_th_y;
-  sprintf(tmp_str, "%d%%", (int32_t)osd_throttle);
+  sprintf(tmp_str, "%d%%", (int32_t)osdproc_osd_state.osd_throttle);
   write_string(tmp_str, posX, posY, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[0]);
 
   if (eeprom_buffer.params.Throt_scale_en) {
-    pos_th_y = (int16_t)(0.5 * osd_throttle);
+    pos_th_y = (int16_t)(0.5 * osdproc_osd_state.osd_throttle);
     pos_th_x = posX - 25 + pos_th_y;
-    sprintf(tmp_str, "%d%%", (int32_t)osd_throttle);
+    sprintf(tmp_str, "%d%%", (int32_t)osdproc_osd_state.osd_throttle);
     write_string(tmp_str, posX, posY, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[0]);
     if (eeprom_buffer.params.Throttle_Scale_Type == 0) {
       write_filled_rectangle_lm(posX + 3, posY + 25 - pos_th_y, 5, pos_th_y, 1, 1);
@@ -511,8 +600,8 @@ void draw_throttle(void) {
       write_vline_lm(posX - 25, posY + 10, posY + 14, 1, 1);
     }
   } else {
-    pos_th_y = (int16_t)(0.5 * osd_throttle);
-    sprintf(tmp_str, "THR %d%%", (int32_t)osd_throttle);
+    pos_th_y = (int16_t)(0.5 * osdproc_osd_state.osd_throttle);
+    sprintf(tmp_str, "THR %d%%", (int32_t)osdproc_osd_state.osd_throttle);
     write_string(tmp_str, posX, posY, 0, 0, TEXT_VA_TOP, TEXT_HA_RIGHT, 0, SIZE_TO_FONT[0]);
   }
 }
@@ -523,6 +612,8 @@ void draw_home_latitude() {
     return;
   }
 
+  float osd_home_lat = get_osd_home_lat();
+  
   sprintf(tmp_str, "H %0.5f", (double) osd_home_lat / DEGREE_MULTIPLIER);
   write_string(tmp_str, eeprom_buffer.params.HomeLatitude_posX,
                eeprom_buffer.params.HomeLatitude_posY, 0, 0, TEXT_VA_TOP,
@@ -536,6 +627,8 @@ void draw_home_longitude() {
     return;
   }
 
+  float osd_home_lon = get_osd_home_lon();
+  
   sprintf(tmp_str, "H %0.5f", (double) osd_home_lon / DEGREE_MULTIPLIER);
   write_string(tmp_str, eeprom_buffer.params.HomeLongitude_posX,
                eeprom_buffer.params.HomeLongitude_posY, 0, 0, TEXT_VA_TOP,
@@ -549,7 +642,7 @@ void draw_gps_status() {
     return;
   }
 
-  switch (osd_fix_type) {
+  switch (osdproc_osd_state.osd_fix_type) {
   case NO_GPS:
     // Only show this message when in fact there is no GPS attached
     sprintf(tmp_str, "NOGPS");
@@ -558,29 +651,29 @@ void draw_gps_status() {
     sprintf(tmp_str, "NOFIX");
     break;
   case GPS_OK_FIX_2D:
-    sprintf(tmp_str, "2D-%d", (int) osd_satellites_visible);
+    sprintf(tmp_str, "2D-%d", (int) osdproc_osd_state.osd_satellites_visible);
     break;
   case GPS_OK_FIX_3D:
-    sprintf(tmp_str, "3D-%d", (int) osd_satellites_visible);
+    sprintf(tmp_str, "3D-%d", (int) osdproc_osd_state.osd_satellites_visible);
     break;
   case GPS_OK_FIX_3D_DGPS:
-    sprintf(tmp_str, "D3D-%d", (int) osd_satellites_visible);
+    sprintf(tmp_str, "D3D-%d", (int) osdproc_osd_state.osd_satellites_visible);
     break;    
   // I don't expect users will ever see these in the real world, but let's
   // handle them anyway
   case GPS_OK_FIX_3D_RTK_FLOAT:
-    sprintf(tmp_str, "RTK-%d", (int) osd_satellites_visible);
+    sprintf(tmp_str, "RTK-%d", (int) osdproc_osd_state.osd_satellites_visible);
     break;    
   case GPS_OK_FIX_TYPE_RTK_FIXED:
-    sprintf(tmp_str, "RTKF-%d", (int) osd_satellites_visible);
+    sprintf(tmp_str, "RTKF-%d", (int) osdproc_osd_state.osd_satellites_visible);
     break;    
   case GPS_OK_FIX_TYPE_STATIC:
-    sprintf(tmp_str, "STAT-%d", (int) osd_satellites_visible);
+    sprintf(tmp_str, "STAT-%d", (int) osdproc_osd_state.osd_satellites_visible);
     break;
   default:
     // Some unknown GPS status, do our best to show we don't understand it in the 
     // tiny space allowed, showing fix code and number of satellites locked
-    sprintf(tmp_str, "?FT:%d-%d", (int) osd_fix_type, (int) osd_satellites_visible);
+    sprintf(tmp_str, "?FT:%d-%d", (int) osdproc_osd_state.osd_fix_type, (int) osdproc_osd_state.osd_satellites_visible);
     break;
   }
   write_string(tmp_str, eeprom_buffer.params.GpsStatus_posX,
@@ -595,7 +688,7 @@ void draw_gps_hdop() {
     return;
   }
 
-  sprintf(tmp_str, "HDOP %0.1f", (double) osd_hdop / 100.0f);
+  sprintf(tmp_str, "HDOP %0.1f", (double) osdproc_osd_state.osd_hdop / 100.0f);
   write_string(tmp_str, eeprom_buffer.params.GpsHDOP_posX,
                eeprom_buffer.params.GpsHDOP_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.GpsHDOP_align, 0,
@@ -607,8 +700,8 @@ void draw_gps_latitude() {
                               eeprom_buffer.params.GpsLat_panel)) {
     return;
   }
-
-  sprintf(tmp_str, "%0.5f", (double) osd_lat / DEGREE_MULTIPLIER);
+  
+  sprintf(tmp_str, "%0.5f", (double) osdproc_osd_state.osd_lat / DEGREE_MULTIPLIER);
   write_string(tmp_str, eeprom_buffer.params.GpsLat_posX,
                eeprom_buffer.params.GpsLat_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.GpsLat_align, 0,
@@ -619,9 +712,9 @@ void draw_gps_longitude() {
   if (!enabledAndShownOnPanel(eeprom_buffer.params.GpsLon_en,
                               eeprom_buffer.params.GpsLon_panel)) {
     return;
-  }
+  } 
 
-  sprintf(tmp_str, "%0.5f", (double) osd_lon / DEGREE_MULTIPLIER);
+  sprintf(tmp_str, "%0.5f", (double) osdproc_osd_state.osd_lon / DEGREE_MULTIPLIER);
   write_string(tmp_str, eeprom_buffer.params.GpsLon_posX,
                eeprom_buffer.params.GpsLon_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.GpsLon_align, 0,
@@ -634,19 +727,19 @@ void draw_gps2_status() {
     return;
   }
 
-  switch (osd_fix_type2) {
+  switch (osdproc_osd_state.osd_fix_type2) {
   case NO_GPS:
   case NO_FIX:
     sprintf(tmp_str, "NOFIX");
     break;
   case GPS_OK_FIX_2D:
-    sprintf(tmp_str, "2D-%d", (int) osd_satellites_visible2);
+    sprintf(tmp_str, "2D-%d", (int) osdproc_osd_state.osd_satellites_visible2);
     break;
   case GPS_OK_FIX_3D:
-    sprintf(tmp_str, "3D-%d", (int) osd_satellites_visible2);
+    sprintf(tmp_str, "3D-%d", (int) osdproc_osd_state.osd_satellites_visible2);
     break;
   case GPS_OK_FIX_3D_DGPS:
-    sprintf(tmp_str, "D3D-%d", (int) osd_satellites_visible2);
+    sprintf(tmp_str, "D3D-%d", (int) osdproc_osd_state.osd_satellites_visible2);
     break;
   default:
     sprintf(tmp_str, "NOGPS");
@@ -664,7 +757,7 @@ void draw_gps2_hdop() {
     return;
   }
 
-  sprintf(tmp_str, "HDOP %0.1f", (double) osd_hdop2 / 100.0f);
+  sprintf(tmp_str, "HDOP %0.1f", (double) osdproc_osd_state.osd_hdop2 / 100.0f);
   write_string(tmp_str, eeprom_buffer.params.Gps2HDOP_posX,
                eeprom_buffer.params.Gps2HDOP_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.Gps2HDOP_align, 0,
@@ -677,7 +770,7 @@ void draw_gps2_latitude() {
     return;
   }
 
-  sprintf(tmp_str, "%0.5f", (double) osd_lat2 / DEGREE_MULTIPLIER);
+  sprintf(tmp_str, "%0.5f", (double) osdproc_osd_state.osd_lat2 / DEGREE_MULTIPLIER);
   write_string(tmp_str, eeprom_buffer.params.Gps2Lat_posX,
                eeprom_buffer.params.Gps2Lat_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.Gps2Lat_align, 0,
@@ -690,7 +783,7 @@ void draw_gps2_longitude() {
     return;
   }
 
-  sprintf(tmp_str, "%0.5f", (double) osd_lon2 / DEGREE_MULTIPLIER);
+  sprintf(tmp_str, "%0.5f", (double) osdproc_osd_state.osd_lon2 / DEGREE_MULTIPLIER);
   write_string(tmp_str, eeprom_buffer.params.Gps2Lon_posX,
                eeprom_buffer.params.Gps2Lon_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.Gps2Lon_align, 0,
@@ -703,7 +796,14 @@ void draw_total_trip() {
     return;
   }
 
-  float tmp = osd_total_trip_dist * convert_distance;
+  float tmp = 0.0f;
+  // Get total trip distance using the ad-hoc mutex & global structure  
+  if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+      tmp = adhoc_osd_state.osd_total_trip_dist * convert_distance; 
+      // Release the ad-hoc mutex
+      xSemaphoreGive(osd_state_adhoc_mutex);
+  }  
+  
   if (tmp < convert_distance_divider) {
     sprintf(tmp_str, "%d%s", (int) tmp, dist_unit_short);
   }
@@ -722,11 +822,14 @@ void draw_time() {
     return;
   }
 
-  uint32_t time_now = GetSystimeMS() - sys_start_time;
+  uint32_t time_now = GetSystimeMS() - get_sys_start_time();
 
   if (eeprom_buffer.params.Time_type == 1) {
-    time_now = heatbeat_start_time ? (GetSystimeMS() - heatbeat_start_time) : 0;
+    uint32_t heartbeat_start_time = get_heartbeat_start_time();
+    time_now = heartbeat_start_time ? (GetSystimeMS() - heartbeat_start_time) : 0;
   } else if (eeprom_buffer.params.Time_type == 2) {
+    uint32_t armed_start_time = get_armed_start_time();
+    uint32_t total_armed_time = get_total_armed_time();
     time_now = armed_start_time ? (GetSystimeMS() - armed_start_time + total_armed_time) : total_armed_time;
   }
 
@@ -777,26 +880,37 @@ float get_distance_between_locations_in_meters(float lat_from,
     return distance;
 }
 
-float get_distance_from_home_in_meters() {
-    // Distance to home is always 0.0 if home isn't set yet
-    if (osd_got_home == 0) {
+float get_distance_from_home_in_meters() {    
+    // Distance to home is always 0 if home isn't set yet
+    if (get_osd_got_home() == 0) {
         return 0.0f;
-    }    
-    
-    return get_distance_between_locations_in_meters(osd_home_lat, osd_home_lon, osd_lat, osd_lon);
+    }
+        
+    float osd_lat_current  = osdproc_osd_state.osd_lat;
+    float osd_lon_current  = osdproc_osd_state.osd_lon;
+    float osd_home_lat = get_osd_home_lat();
+    float osd_home_lon = get_osd_home_lon();
+      
+    return get_distance_between_locations_in_meters(osd_home_lat, osd_home_lon, osd_lat_current, osd_lon_current);
 }
 
 // Thanks again to:
 // http://www.movable-type.co.uk/scripts/latlong.html
-float get_bearing_to_home_in_degrees() {    
+float get_absolute_bearing_to_home_in_degrees() {   
+
     // Bearing to home is always 0 (north) if home isn't set yet
-    if (osd_got_home == 0) {
+    if (get_osd_got_home() == 0) {
         return 0.0f;
-    }    
-    
-    float phi_1 = Convert_Angle_To_Radians(osd_lat / DEGREE_MULTIPLIER);
+    }
+
+    float osd_lat_current  = osdproc_osd_state.osd_lat;
+    float osd_lon_current  = osdproc_osd_state.osd_lon; 
+    float osd_home_lat = get_osd_home_lat();
+    float osd_home_lon = get_osd_home_lon();    
+      
+    float phi_1 = Convert_Angle_To_Radians(osd_lat_current / DEGREE_MULTIPLIER);
     float phi_2 = Convert_Angle_To_Radians(osd_home_lat / DEGREE_MULTIPLIER);
-    float delta_lambda = Convert_Angle_To_Radians((osd_home_lon / DEGREE_MULTIPLIER) - (osd_lon / DEGREE_MULTIPLIER));
+    float delta_lambda = Convert_Angle_To_Radians((osd_home_lon / DEGREE_MULTIPLIER) - (osd_lon_current / DEGREE_MULTIPLIER));
 
     // see http://mathforum.org/library/drmath/view/55417.html
     float y = sin(delta_lambda) * cos(phi_2);
@@ -808,15 +922,15 @@ float get_bearing_to_home_in_degrees() {
 }
 
 void draw_distance_to_home() {
-    if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_home_dist_en,
+    if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_home_dist_en, 
                               eeprom_buffer.params.CWH_home_dist_panel)) {
       return;
     }
-
-    float tmp = osd_home_distance * convert_distance;
-   
+        
+    float tmp = get_osd_home_distance() * convert_distance;
+    
     // If home not set, give some indication that distance to home is currently meaningless
-    if (osd_got_home == 0) {
+    if (get_osd_got_home() == 0){
         sprintf(tmp_str, "H -%s", dist_unit_short);
     // Display short units (meters/feet)
     } else if (tmp < convert_distance_divider) {
@@ -824,19 +938,19 @@ void draw_distance_to_home() {
     // Display long units (kilometers/miles)
     } else {
         sprintf(tmp_str, "H %0.2f%s", (double)(tmp / convert_distance_divider), dist_unit_long);
-    }    
-  
-    write_string(tmp_str, eeprom_buffer.params.CWH_home_dist_posX, eeprom_buffer.params.CWH_home_dist_posY, 0, 0, TEXT_VA_TOP, eeprom_buffer.params.CWH_home_dist_align, 0, SIZE_TO_FONT[eeprom_buffer.params.CWH_home_dist_fontsize]);
+    }
+
+    write_string(tmp_str, eeprom_buffer.params.CWH_home_dist_posX, eeprom_buffer.params.CWH_home_dist_posY, 0, 0, TEXT_VA_TOP, eeprom_buffer.params.CWH_home_dist_align, 0, SIZE_TO_FONT[eeprom_buffer.params.CWH_home_dist_fontsize]);  
 }
 
 void draw_distance_to_waypoint() {
-  if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_wp_dist_en,
+  if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_wp_dist_en, 
                               eeprom_buffer.params.CWH_wp_dist_panel)) {
       return;
-  }
-
-    if (wp_number != 0) {
-         float tmp = wp_dist * convert_distance;
+  } 
+    
+    if (osdproc_osd_state.wp_number != 0) {
+         float tmp = osdproc_osd_state.wp_dist * convert_distance;
          if (tmp < convert_distance_divider) {
             sprintf(tmp_str, "WP %d%s", (int)tmp, dist_unit_short);
          }
@@ -849,29 +963,37 @@ void draw_distance_to_waypoint() {
 }
 
 // Set Home Position if needed.
-// (Might be able to move this to main task loop? -- SLG)
 void set_home_position_if_unset() {
-  if ((osd_got_home == 0) && (motor_armed) && (osd_fix_type > 1)) {
-    osd_home_lat = osd_lat;
-    osd_home_lon = osd_lon;
-    osd_alt_cnt = 0;
-    osd_got_home = 1;
+  if ((get_osd_got_home() == 0) && (osdproc_osd_state.motor_armed) && (osdproc_osd_state.osd_fix_type > 1)) {
+      
+    float osd_lat_current  = osdproc_osd_state.osd_lat;
+    float osd_lon_current  = osdproc_osd_state.osd_lon;
+    
+    set_osd_home_lat(osd_lat_current);
+    set_osd_home_lon(osd_lon_current);
+    get_osd_alt_cnt(0);
+    set_osd_got_home(1);
   }
 }
 
+// Set home altitude if needed
 void set_home_altitude_if_unset() {
-    if (osd_got_home == 1)
+    if (get_osd_got_home() == 1)
     {
+        float osd_alt_current = osdproc_osd_state.osd_alt;
+        uint8_t osd_alt_cnt_current = get_osd_alt_cnt();
+        float osd_alt_prev = get_osd_alt_prev();
+        
         // JRChange: osd_home_alt: check for stable osd_alt (must be stable for 75*40ms = 3s)
         // we can get the relative alt from mavlink directly.
-        if (osd_alt_cnt < 75) {
-          if (fabs(osd_alt_prev - osd_alt) > 0.5) {
-            osd_alt_cnt = 0;
-            osd_alt_prev = osd_alt;
+        if (osd_alt_cnt_current < 75) {
+          if (fabs(osd_alt_prev - osd_alt_current) > 0.5) {
+            set_osd_alt_cnt(0);
+            set_osd_alt_prev(osd_alt_current);
           } else {
-            osd_alt_cnt++;
-            if (osd_alt_cnt >= 75) {
-              osd_home_alt = osd_alt;           // take this stable osd_alt as osd_home_alt
+            set_osd_alt_cnt(osd_alt_cnt_current++);
+            if (osd_alt_cnt_current >= 75) {
+              set_osd_home_alt(osd_alt_current);           // take this stable osd_alt as osd_home_alt
             }
           }
         }
@@ -880,36 +1002,48 @@ void set_home_altitude_if_unset() {
 
 // Set home distance and bearing, if we know where home is
 void set_home_distance_and_bearing() {
-  if (osd_got_home == 1) {
-    osd_home_distance = get_distance_from_home_in_meters();
-    osd_home_bearing = get_bearing_to_home_in_degrees();
+  if (get_osd_got_home() == 1) {
+    set_osd_home_distance(get_distance_from_home_in_meters());
+    set_osd_home_bearing(get_absolute_bearing_to_home_in_degrees());
   }
 }
 
 // direction - scale mode
 void draw_osd_linear_compass() {
-  if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_Tmode_en,
+  if (!enabledAndShownOnPanel(eeprom_buffer.params.CWH_Tmode_en, 
                               eeprom_buffer.params.CWH_Tmode_panel)) {
       return;
   }
-
-  draw_linear_compass(osd_heading, 0, 120, 180, GRAPHICS_X_MIDDLE, eeprom_buffer.params.CWH_Tmode_posY, 15, 30, 5, 8, 0);
+  
+  draw_linear_compass(osdproc_osd_state.osd_heading, 0, 120, 180, GRAPHICS_X_MIDDLE, eeprom_buffer.params.CWH_Tmode_posY, 15, 30, 5, 8, 0);
 }
+
+float get_updated_average_climb_rate() {
+    float average_climb = 0.0f;
+    
+    // Take the ad-hoc global mutex
+    if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+        adhoc_osd_state.osd_climb_ma[adhoc_osd_state.osd_climb_ma_index] = osdproc_osd_state.osd_climb;
+        adhoc_osd_state.osd_climb_ma_index = (adhoc_osd_state.osd_climb_ma_index + 1) % 10;
+        for (int i = 0; i < 10; i++) {
+            average_climb = average_climb + adhoc_osd_state.osd_climb_ma[i];
+        }
+        average_climb = roundf(10 * (average_climb / 10)) / 10.0f;
+
+        // Release the ad-hoc mutex
+        xSemaphoreGive(osd_state_adhoc_mutex);
+    }
+    return average_climb;
+}
+
 
 void draw_climb_rate() {
   if (!enabledAndShownOnPanel(eeprom_buffer.params.ClimbRate_en,
                               eeprom_buffer.params.ClimbRate_panel)) {
     return;
   }
-
-  float average_climb = 0.0f;
-  osd_climb_ma[osd_climb_ma_index] = osd_climb;
-  osd_climb_ma_index = (osd_climb_ma_index + 1) % 10;
-  for (int i = 0; i < 10; i++) {
-    average_climb = average_climb + osd_climb_ma[i];
-  }
-  average_climb = roundf(10 * (average_climb / 10)) / 10.0f;
-
+  
+  float average_climb = get_updated_average_climb_rate();
   int x = eeprom_buffer.params.ClimbRate_posX;
   int y = eeprom_buffer.params.ClimbRate_posY;
   sprintf(tmp_str, "%0.1f", fabs(average_climb));
@@ -938,23 +1072,23 @@ void draw_rssi() {
     return;
   }
 
-  int rssi = (int)osd_rssi;
+  int rssi = (int)osdproc_osd_state.osd_rssi;
 
   //Not from the MAVLINK, should take the RC channel PWM value.
   if (eeprom_buffer.params.RSSI_type != 0)
   {
-    if (eeprom_buffer.params.RSSI_type == 5) rssi = (int)osd_chan5_raw;
-    else if (eeprom_buffer.params.RSSI_type == 6) rssi = (int)osd_chan6_raw;
-    else if (eeprom_buffer.params.RSSI_type == 7) rssi = (int)osd_chan7_raw;
-    else if (eeprom_buffer.params.RSSI_type == 8) rssi = (int)osd_chan8_raw;
-    else if (eeprom_buffer.params.RSSI_type == 9) rssi = (int)osd_chan9_raw;
-    else if (eeprom_buffer.params.RSSI_type == 10) rssi = (int)osd_chan10_raw;
-    else if (eeprom_buffer.params.RSSI_type == 11) rssi = (int)osd_chan11_raw;
-    else if (eeprom_buffer.params.RSSI_type == 12) rssi = (int)osd_chan12_raw;
-    else if (eeprom_buffer.params.RSSI_type == 13) rssi = (int)osd_chan13_raw;
-    else if (eeprom_buffer.params.RSSI_type == 14) rssi = (int)osd_chan14_raw;
-    else if (eeprom_buffer.params.RSSI_type == 15) rssi = (int)osd_chan15_raw;
-    else if (eeprom_buffer.params.RSSI_type == 16) rssi = (int)osd_chan16_raw;
+    if (eeprom_buffer.params.RSSI_type == 5) rssi = (int)osdproc_osd_state.osd_chan5_raw;
+    else if (eeprom_buffer.params.RSSI_type == 6) rssi = (int)osdproc_osd_state.osd_chan6_raw;
+    else if (eeprom_buffer.params.RSSI_type == 7) rssi = (int)osdproc_osd_state.osd_chan7_raw;
+    else if (eeprom_buffer.params.RSSI_type == 8) rssi = (int)osdproc_osd_state.osd_chan8_raw;
+    else if (eeprom_buffer.params.RSSI_type == 9) rssi = (int)osdproc_osd_state.osd_chan9_raw;
+    else if (eeprom_buffer.params.RSSI_type == 10) rssi = (int)osdproc_osd_state.osd_chan10_raw;
+    else if (eeprom_buffer.params.RSSI_type == 11) rssi = (int)osdproc_osd_state.osd_chan11_raw;
+    else if (eeprom_buffer.params.RSSI_type == 12) rssi = (int)osdproc_osd_state.osd_chan12_raw;
+    else if (eeprom_buffer.params.RSSI_type == 13) rssi = (int)osdproc_osd_state.osd_chan13_raw;
+    else if (eeprom_buffer.params.RSSI_type == 14) rssi = (int)osdproc_osd_state.osd_chan14_raw;
+    else if (eeprom_buffer.params.RSSI_type == 15) rssi = (int)osdproc_osd_state.osd_chan15_raw;
+    else if (eeprom_buffer.params.RSSI_type == 16) rssi = (int)osdproc_osd_state.osd_chan16_raw;
   }
 
   //0:percentage 1:raw
@@ -996,18 +1130,18 @@ void draw_link_quality() {
   int min = eeprom_buffer.params.LinkQuality_min;
   int max = eeprom_buffer.params.LinkQuality_max;
 
-  if (eeprom_buffer.params.LinkQuality_chan == 5) linkquality = (int)osd_chan5_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 6) linkquality = (int)osd_chan6_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 7) linkquality = (int)osd_chan7_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 8) linkquality = (int)osd_chan8_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 9) linkquality = (int)osd_chan9_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 10) linkquality = (int)osd_chan10_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 11) linkquality = (int)osd_chan11_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 12) linkquality = (int)osd_chan12_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 13) linkquality = (int)osd_chan13_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 14) linkquality = (int)osd_chan14_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 15) linkquality = (int)osd_chan15_raw;
-  else if (eeprom_buffer.params.LinkQuality_chan == 16) linkquality = (int)osd_chan16_raw;
+  if (eeprom_buffer.params.LinkQuality_chan == 5) linkquality = (int)osdproc_osd_state.osd_chan5_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 6) linkquality = (int)osdproc_osd_state.osd_chan6_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 7) linkquality = (int)osdproc_osd_state.osd_chan7_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 8) linkquality = (int)osdproc_osd_state.osd_chan8_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 9) linkquality = (int)osdproc_osd_state.osd_chan9_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 10) linkquality = (int)osdproc_osd_state.osd_chan10_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 11) linkquality = (int)osdproc_osd_state.osd_chan11_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 12) linkquality = (int)osdproc_osd_state.osd_chan12_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 13) linkquality = (int)osdproc_osd_state.osd_chan13_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 14) linkquality = (int)osdproc_osd_state.osd_chan14_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 15) linkquality = (int)osdproc_osd_state.osd_chan15_raw;
+  else if (eeprom_buffer.params.LinkQuality_chan == 16) linkquality = (int)osdproc_osd_state.osd_chan16_raw;
 
   // 0: percent, 1: raw
   if (eeprom_buffer.params.LinkQuality_type == 0) {
@@ -1042,8 +1176,8 @@ void draw_efficiency() {
     return;
   }
 
-  float wattage = osd_vbat_A * osd_curr_A * 0.01;
-  float speed = osd_groundspeed * convert_speed;
+  float wattage = osdproc_osd_state.osd_vbat_A * osdproc_osd_state.osd_curr_A * 0.01;
+  float speed = osdproc_osd_state.osd_groundspeed * convert_speed;
   float efficiency = 0;
   if (speed != 0) {
     efficiency = wattage / speed;
@@ -1061,7 +1195,7 @@ void draw_watts() {
     return;
   }
 
-  sprintf(tmp_str, "%0.1fW", osd_vbat_A * osd_curr_A * 0.01);
+  sprintf(tmp_str, "%0.1fW", osdproc_osd_state.osd_vbat_A * osdproc_osd_state.osd_curr_A * 0.01);
 
   write_string(tmp_str, eeprom_buffer.params.Watts_posX, eeprom_buffer.params.Watts_posY,
                0, 0, TEXT_VA_TOP, eeprom_buffer.params.Watts_align, 0,
@@ -1069,6 +1203,7 @@ void draw_watts() {
 }
 
 void draw_panel_changed() {
+  uint8_t current_panel = get_current_panel();
   if (last_panel != current_panel) {
     last_panel = current_panel;
     new_panel_start_time = GetSystimeMS();
@@ -1106,22 +1241,22 @@ void draw_version_splash() {
     version_splash_start_time = GetSystimeMS();
   }
         
-  // Show the splash screen  
+  // Show the splash screen
   int font_number_line_one = 0;
   struct FontEntry font_info_line_one;
-  fetch_font_info(0, font_number_line_one, &font_info_line_one, NULL);      
+  fetch_font_info(0, font_number_line_one, &font_info_line_one, NULL);
   char version_str_line_one[15];
   struct FontDimensions line_one_font_dim;
   memset (version_str_line_one, ' ', 15);    
   sprintf(version_str_line_one, "PLAYUAV V%s", PLAYUAV_VERSION_NUMBER);
   calc_text_dimensions(version_str_line_one, font_info_line_one, 1, 0, &line_one_font_dim);
   
-  int font_number_line_two = 1;  
-  struct FontEntry font_info_line_two;  
-  fetch_font_info(0, font_number_line_two, &font_info_line_two, NULL);      
+  int font_number_line_two = 1;
+  struct FontEntry font_info_line_two;
+  fetch_font_info(0, font_number_line_two, &font_info_line_two, NULL);
   char version_str_line_two[15];
-  struct FontDimensions line_two_font_dim;    
-  memset (version_str_line_two, ' ', 15);    
+  struct FontDimensions line_two_font_dim;
+  memset (version_str_line_two, ' ', 15);
   sprintf(version_str_line_two, "%s", PLAYUAV_VERSION_DESCRIPTION);
   calc_text_dimensions(version_str_line_two, font_info_line_two, 1, 0, &line_two_font_dim);    
   
@@ -1470,15 +1605,19 @@ void draw_head_wp_home() {
   VECTOR2D_INITXYZ(&(suav.vlist_local[1]), -3, 7);
   VECTOR2D_INITXYZ(&(suav.vlist_local[2]), 3, 7);
   Reset_Polygon2D(&suav);
-  Rotate_Polygon2D(&suav, osd_heading);
+  Rotate_Polygon2D(&suav, osdproc_osd_state.osd_heading);
   write_line_outlined(suav.vlist_trans[0].x + suav.x0, suav.vlist_trans[0].y + suav.y0,
                       suav.vlist_trans[1].x + suav.x0, suav.vlist_trans[1].y + suav.y0, 2, 2, 0, 1);
   write_line_outlined(suav.vlist_trans[0].x + suav.x0, suav.vlist_trans[0].y + suav.y0,
                       suav.vlist_trans[2].x + suav.x0, suav.vlist_trans[2].y + suav.y0, 2, 2, 0, 1);
-
+   
+  uint32_t osd_home_bearing = get_osd_home_bearing();
+  uint8_t home_is_set = get_osd_got_home();
+  long home_distance = get_osd_home_distance();
+  
   // Draw home 
   // Home only shown when home is set, and the distance to home is greater than 1 meter
-  if ((osd_got_home == 1) && ((int32_t)osd_home_distance > 1))    
+  if (((int32_t)home_distance > 1) && (home_is_set == 1))
   {
     float homeCX = posX + (eeprom_buffer.params.CWH_Nmode_home_radius) * Fast_Sin(osd_home_bearing);
     float homeCY = posY - (eeprom_buffer.params.CWH_Nmode_home_radius) * Fast_Cos(osd_home_bearing);
@@ -1486,13 +1625,13 @@ void draw_head_wp_home() {
   }
 
   //draw waypoint
-  if ((wp_number != 0) && (wp_dist > 1))
+  if ((osdproc_osd_state.wp_number != 0) && (osdproc_osd_state.wp_dist > 1))
   {
     //format bearing
-    wp_target_bearing = (wp_target_bearing + 360) % 360;
-    float wpCX = posX + (eeprom_buffer.params.CWH_Nmode_wp_radius) * Fast_Sin(wp_target_bearing);
-    float wpCY = posY - (eeprom_buffer.params.CWH_Nmode_wp_radius) * Fast_Cos(wp_target_bearing);
-    sprintf(tmp_str, "%d", (int)wp_number);
+    osdproc_osd_state.wp_target_bearing = (osdproc_osd_state.wp_target_bearing + 360) % 360;
+    float wpCX = posX + (eeprom_buffer.params.CWH_Nmode_wp_radius) * Fast_Sin(osdproc_osd_state.wp_target_bearing);
+    float wpCY = posY - (eeprom_buffer.params.CWH_Nmode_wp_radius) * Fast_Cos(osdproc_osd_state.wp_target_bearing);
+    sprintf(tmp_str, "%d", (int)osdproc_osd_state.wp_number);
     write_string(tmp_str, wpCX, wpCY, 0, 0, TEXT_VA_MIDDLE, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
   }
 }
@@ -1521,7 +1660,7 @@ void draw_wind(void) {
   VECTOR2D_INITXYZ(&(obj2D.vlist_local[3]), 0, 8);
   VECTOR2D_INITXYZ(&(obj2D.vlist_local[4]), 0, -2);
   Reset_Polygon2D(&obj2D);
-  Rotate_Polygon2D(&obj2D, osd_windDir);
+  Rotate_Polygon2D(&obj2D, osdproc_osd_state.osd_windDir);
   write_triangle_wire(obj2D.vlist_trans[0].x + obj2D.x0, obj2D.vlist_trans[0].y + obj2D.y0,
                       obj2D.vlist_trans[1].x + obj2D.x0, obj2D.vlist_trans[1].y + obj2D.y0,
                       obj2D.vlist_trans[2].x + obj2D.x0, obj2D.vlist_trans[2].y + obj2D.y0);
@@ -1529,7 +1668,7 @@ void draw_wind(void) {
                       obj2D.vlist_trans[4].x + obj2D.x0, obj2D.vlist_trans[4].y + obj2D.y0, 2, 2, 0, 1);
 
   //draw wind speed
-  float tmp = osd_windSpeed * convert_speed;
+  float tmp = osdproc_osd_state.osd_windSpeed * convert_speed;
   sprintf(tmp_str, "%.2f%s", tmp, spd_unit);
   write_string(tmp_str, posX + 15, posY, 0, 0, TEXT_VA_MIDDLE, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);
 }
@@ -1576,21 +1715,21 @@ void draw_warning(void) {
   uint8_t warning[] = { 0, 0, 0, 0, 0, 0, 0 };
 
   //no GPS fix!
-  if (eeprom_buffer.params.Alarm_GPS_status_en == 1 && (osd_fix_type < GPS_OK_FIX_3D)) {
+  if (eeprom_buffer.params.Alarm_GPS_status_en == 1 && (osdproc_osd_state.osd_fix_type < GPS_OK_FIX_3D)) {
     //debug_warnings_two();
     haswarn = true;
     warning[0] = 1;
   }
 
   //low batt
-  if (eeprom_buffer.params.Alarm_low_batt_en == 1 && (osd_battery_remaining_A < eeprom_buffer.params.Alarm_low_batt)) {
+  if (eeprom_buffer.params.Alarm_low_batt_en == 1 && (osdproc_osd_state.osd_battery_remaining_A < eeprom_buffer.params.Alarm_low_batt)) {
     haswarn = true;
     warning[1] = 1;
   }
 
-  float spd_comparison = osd_groundspeed;
+  float spd_comparison = osdproc_osd_state.osd_groundspeed;
   if (eeprom_buffer.params.Spd_Scale_type == 1) {
-    spd_comparison = osd_airspeed;
+    spd_comparison = osdproc_osd_state.osd_airspeed;
   }
   spd_comparison *= convert_speed;
   //under speed
@@ -1605,7 +1744,11 @@ void draw_warning(void) {
     warning[3] = 1;
   }
 
-  float alt_comparison = osd_rel_alt;
+  // float osd_alt = 0.0f;
+  // get_osd_alt(&osd_alt);
+  float osd_alt = osdproc_osd_state.osd_alt;  
+    
+  float alt_comparison = osdproc_osd_state.osd_rel_alt;
   if (eeprom_buffer.params.Alt_Scale_type == 0) {
     alt_comparison = osd_alt;
   }
@@ -1622,7 +1765,7 @@ void draw_warning(void) {
   }
 
   // no home yet
-  if (osd_got_home == 0) {
+  if (get_osd_got_home() == 0) {
     haswarn = true;
     warning[6] = 1;
   }
@@ -1639,7 +1782,7 @@ void draw_warning(void) {
     if (last_warn_type == 0) {
       last_warn_type++;
       if (warning[0] == 1) {
-          warn_str = "NO GPS FIX";          
+          warn_str = "NO GPS FIX";
           return;
       }
     }
@@ -1647,50 +1790,50 @@ void draw_warning(void) {
     if (last_warn_type == 1) {
       last_warn_type++;
       if (warning[1] == 1) {
-          warn_str = "LOW BATTERY";          
+          warn_str = "LOW BATTERY";
           return;
       }
-    }    
+    }
     
     if (last_warn_type == 2) {
       last_warn_type++;
       if (warning[2] == 1) {
-          warn_str = "SPEED LOW";          
+          warn_str = "SPEED LOW";
           return;
       }
-    }    
+    }
     
     if (last_warn_type == 3) {
       last_warn_type++;
       if (warning[3] == 1) {
-          warn_str = "OVER SPEED";          
+          warn_str = "OVER SPEED";
           return;
       }
-    }    
+    }
     
     if (last_warn_type == 4) {
       last_warn_type++;
       if (warning[4] == 1) {
-          warn_str = "LOW ALT";          
+          warn_str = "LOW ALT";
           return;
       }
-    }    
+    }
     
     if (last_warn_type == 5) {
       last_warn_type++;
       if (warning[5] == 1) {
-          warn_str = "HIGH ALT";          
+          warn_str = "HIGH ALT";
           return;
       }
-    }    
+    }
     
     if (last_warn_type == 6) {
       last_warn_type++;
       if (warning[6] == 1) {
-          warn_str = "NO HOME POSITION SET";          
+          warn_str = "NO HOME POSITION SET";
           return;
       }
-    }    
+    }
 
     // If we didn't match, there's a coding
     // error of some kind. Warn the user/developer.
@@ -1718,16 +1861,16 @@ void debug_wps(void) {
 
 //    float uav_lat = osd_lat / DEGREE_MULTIPLIER;
 //    float uav_lon = osd_lon / DEGREE_MULTIPLIER;
-  float home_lat = osd_home_lat / DEGREE_MULTIPLIER;
-  float home_lon = osd_home_lon / DEGREE_MULTIPLIER;
+  float home_lat = get_osd_home_lat() / DEGREE_MULTIPLIER;
+  float home_lon = get_osd_home_lon() / DEGREE_MULTIPLIER;
 
 //    if(osd_fix_type > 1){
 //        sprintf(tmp_str, "UAV X:%0.12f Y:%0.12f",(double)uav_lat,(double)uav_lon);
 //        write_string(tmp_str, 10, a, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);
 //        a += 15;
 //    }
-
-  if (osd_got_home == 1) {
+  
+  if (get_osd_got_home() == 1) {
 //        sprintf(tmp_str, "home X:%0.12f Y:%0.12f",(double)home_lat,(double)home_lon);
 //        write_string(tmp_str, 10, a, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);
 //        a += 15;
@@ -1778,9 +1921,12 @@ void draw_flight_mode() {
   }
 
   char* mode_str = "UNKNOWN";
-  switch (autopilot) {
+  switch (osdproc_osd_state.autopilot) {
   case 3:       //ardupilotmega
   {
+    uint32_t custom_mode = osdproc_osd_state.custom_mode;
+    uint8_t mav_type = get_mav_type();
+    
     if (mav_type != 1) {
       if (custom_mode == 0)       mode_str = "STAB";              //manual airframe angle with manual throttle
       else if (custom_mode == 1)  mode_str = "ACRO";              //manual body-frame angular rate with manual throttle
@@ -1821,7 +1967,7 @@ void draw_flight_mode() {
   case 12:       //PX4
   {
     union px4_custom_mode custom_mode_px4;
-    custom_mode_px4.data = custom_mode;
+    custom_mode_px4.data = osdproc_osd_state.custom_mode;
 
     if (custom_mode_px4.main_mode == 1) mode_str = "MANUAL";
     else if (custom_mode_px4.main_mode == 2) mode_str = "ALTCTL";
@@ -1862,7 +2008,7 @@ void draw_arm_state() {
     return;
   }
 
-  tmp_str1 = motor_armed ? "ARMED" : "DISARMED";
+  tmp_str1 = osdproc_osd_state.motor_armed ? "ARMED" : "DISARMED";
   write_string(tmp_str1, eeprom_buffer.params.Arm_posX,
                eeprom_buffer.params.Arm_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.Arm_align, 0,
@@ -1875,7 +2021,7 @@ void draw_battery_voltage() {
     return;
   }
 
-  sprintf(tmp_str, "%0.1fV", (double) osd_vbat_A);
+  sprintf(tmp_str, "%0.1fV", (double) osdproc_osd_state.osd_vbat_A);
   write_string(tmp_str, eeprom_buffer.params.BattVolt_posX,
                eeprom_buffer.params.BattVolt_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.BattVolt_align, 0,
@@ -1888,7 +2034,7 @@ void draw_battery_current() {
     return;
   }
 
-  sprintf(tmp_str, "%0.1fA", (double) (osd_curr_A * 0.01));
+  sprintf(tmp_str, "%0.1fA", (double) (osdproc_osd_state.osd_curr_A * 0.01));
   write_string(tmp_str, eeprom_buffer.params.BattCurrent_posX,
                eeprom_buffer.params.BattCurrent_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.BattCurrent_align, 0,
@@ -1901,7 +2047,7 @@ void draw_battery_remaining() {
     return;
   }
 
-  sprintf(tmp_str, "%d%%", osd_battery_remaining_A);
+  sprintf(tmp_str, "%d%%", osdproc_osd_state.osd_battery_remaining_A);
   write_string(tmp_str, eeprom_buffer.params.BattRemaining_posX,
                eeprom_buffer.params.BattRemaining_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.BattRemaining_align, 0,
@@ -1914,7 +2060,7 @@ void draw_battery_consumed() {
     return;
   }
 
-  sprintf(tmp_str, "%dmah", (int)osd_curr_consumed_mah);
+  sprintf(tmp_str, "%dmah", (int)get_current_consumed_mah());
   write_string(tmp_str, eeprom_buffer.params.BattConsumed_posX,
                eeprom_buffer.params.BattConsumed_posY, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.BattConsumed_align, 0,
@@ -1927,7 +2073,9 @@ void draw_altitude_scale() {
     return;
   }
 
-  float alt_shown = osd_rel_alt;
+  float osd_alt = osdproc_osd_state.osd_alt;      
+  float alt_shown = osdproc_osd_state.osd_rel_alt;
+  
   uint16_t posX = eeprom_buffer.params.Alt_Scale_posX;
   sprintf(tmp_str, "Alt");
   if (eeprom_buffer.params.Alt_Scale_type == 0) {
@@ -1961,7 +2109,9 @@ void draw_absolute_altitude() {
     return;
   }
 
+  float osd_alt = osdproc_osd_state.osd_alt;     
   float tmp = osd_alt * convert_distance;
+
   if (tmp < convert_distance_divider) {
     sprintf(tmp_str, "AA %d%s", (int) tmp, dist_unit_short);
   }
@@ -1981,7 +2131,7 @@ void draw_relative_altitude() {
     return;
   }
 
-  float tmp = osd_rel_alt * convert_distance;
+  float tmp = osdproc_osd_state.osd_rel_alt * convert_distance;
   if (tmp < convert_distance_divider) {
     sprintf(tmp_str, "A %d%s", (int) tmp, dist_unit_short);
   }
@@ -2001,10 +2151,10 @@ void draw_speed_scale() {
     return;
   }
 
-  float spd_shown = osd_groundspeed;
+  float spd_shown = osdproc_osd_state.osd_groundspeed;
   sprintf(tmp_str, "GS");
   if (eeprom_buffer.params.Spd_Scale_type == 1) {
-    spd_shown = osd_airspeed;
+    spd_shown = osdproc_osd_state.osd_airspeed;
     sprintf(tmp_str, "AS");
   }
   draw_vertical_scale(spd_shown * convert_speed, 60,
@@ -2030,7 +2180,7 @@ void draw_ground_speed() {
     return;
   }
 
-  float tmp = osd_groundspeed * convert_speed;
+  float tmp = osdproc_osd_state.osd_groundspeed * convert_speed;
   sprintf(tmp_str, "GS %d%s", (int) tmp, spd_unit);
   write_string(tmp_str, eeprom_buffer.params.TSPD_posX,
                eeprom_buffer.params.TSPD_posY, 0, 0, TEXT_VA_TOP,
@@ -2044,7 +2194,7 @@ void draw_air_speed() {
     return;
   }
 
-  float tmp = osd_airspeed * convert_speed;
+  float tmp = osdproc_osd_state.osd_airspeed * convert_speed;
   sprintf(tmp_str, "AS %d%s", (int) tmp, spd_unit);
   write_string(tmp_str, eeprom_buffer.params.Air_Speed_posX,
                eeprom_buffer.params.Air_Speed_posY, 0, 0, TEXT_VA_TOP,
@@ -2052,21 +2202,28 @@ void draw_air_speed() {
                SIZE_TO_FONT[eeprom_buffer.params.Air_Speed_fontsize]);
 }
 
+// Port to mutex-land of original draw_map code
 void draw_map(void) {
   if (!enabledAndShownOnPanel(eeprom_buffer.params.Map_en,
                               eeprom_buffer.params.Map_panel)) {
     return;
   }
 
-  if (got_all_wps == 0)
-    return;
+  if (osdproc_osd_state.got_all_wps == 0) {
+    return;  
+  }    
 
+  uint8_t osd_got_home = get_osd_got_home();  
+  
   char tmp_str[50] = { 0 };
 
-  float uav_lat = osd_lat / DEGREE_MULTIPLIER;
-  float uav_lon = osd_lon / DEGREE_MULTIPLIER;
-  float home_lat = osd_home_lat / DEGREE_MULTIPLIER;
-  float home_lon = osd_home_lon / DEGREE_MULTIPLIER;
+  float osd_lat_current = osdproc_osd_state.osd_lat;
+  float osd_lon_current = osdproc_osd_state.osd_lon; 
+  
+  float uav_lat = osd_lat_current / DEGREE_MULTIPLIER;
+  float uav_lon = osd_lon_current / DEGREE_MULTIPLIER;
+  float home_lat = get_osd_home_lat() / DEGREE_MULTIPLIER;
+  float home_lon = get_osd_home_lon() / DEGREE_MULTIPLIER;
 
   float uav_x = 0.0f;
   float uav_y = 0.0f;
@@ -2077,12 +2234,11 @@ void draw_map(void) {
   rect.z = -999.0f;
   rect.w = 999.0f;
 
-  for (int i = 1; i < wp_counts; i++)
-  {
-    gen_overlay_rect(wp_list[i].x, wp_list[i].y, &rect);
+  for (int i = 1; i < osdproc_osd_state.wp_counts; i++) {
+    gen_overlay_rect(osdproc_osd_state.wp_list[i].x, osdproc_osd_state.wp_list[i].y, &rect);
   }
 
-  if (osd_fix_type > 1) {
+  if (osdproc_osd_state.osd_fix_type > 1) {
     gen_overlay_rect(uav_lat, uav_lon, &rect);
   }
 
@@ -2103,7 +2259,7 @@ void draw_map(void) {
 
   float dstlon, dstlat, scaleLongDown;
 
-  VERTEX2DF wps_screen_point[wp_counts];
+  VERTEX2DF wps_screen_point[osdproc_osd_state.wp_counts];
   scaleLongDown = Fast_Cos(fabs(rect.y));
   dstlon = fabs(rect.x - rect.z) * 111319.5f * scaleLongDown;
   dstlat = fabs(rect.y - rect.w) * 111319.5f;
@@ -2112,14 +2268,13 @@ void draw_map(void) {
   VERTEX2DF tmp_point;
   
   // Translate to screen coordinates for waypoints (if any)
-  for (int i = 1; i < wp_counts; i++)
-  {
-    wps_screen_point[i] = gps_to_screen_pixel(wp_list[i].x, wp_list[i].y, cent_lat, cent_lon,
+  for (int i = 1; i < osdproc_osd_state.wp_counts; i++) {
+    wps_screen_point[i] = gps_to_screen_pixel(osdproc_osd_state.wp_list[i].x, osdproc_osd_state.wp_list[i].y, cent_lat, cent_lon,
                                               rect_diagonal_half, cent_x, cent_y, radius);
   }
 
   // Translate to screen coordinates for UAV (if GPS location known)
-  if (osd_fix_type > 1) {
+  if (osdproc_osd_state.osd_fix_type > 1) {
     tmp_point = gps_to_screen_pixel(uav_lat, uav_lon, cent_lat, cent_lon,
                                     rect_diagonal_half, cent_x, cent_y, radius);
     uav_x = tmp_point.x;
@@ -2134,20 +2289,18 @@ void draw_map(void) {
   }
 
   // Draw lines between all waypoints (if any)
-  for (int i = 1; i < wp_counts - 1; i++)
-  {
+  for (int i = 1; i < osdproc_osd_state.wp_counts - 1; i++) {
     write_line_outlined(wps_screen_point[i].x, wps_screen_point[i].y, wps_screen_point[i + 1].x, wps_screen_point[i + 1].y, 2, 2, 0, 1);
   }
 
   // If home is set, and we have at least one waypoint, draw line between home and first waypoint
-  if (osd_got_home == 1 && wp_counts > 1) {
+  if (osd_got_home == 1 && osdproc_osd_state.wp_counts > 1) {
     write_line_outlined(wps_screen_point[0].x, wps_screen_point[0].y, wps_screen_point[1].x, wps_screen_point[1].y, 2, 2, 0, 1);
   }
 
   // Draw waypoint numbers (if any)
-  for (int i = 1; i < wp_counts; i++)
-  {
-    sprintf(tmp_str, "%d", wp_list[i].seq);
+  for (int i = 1; i < osdproc_osd_state.wp_counts; i++) {
+    sprintf(tmp_str, "%d", osdproc_osd_state.wp_list[i].seq);
     write_string(tmp_str, wps_screen_point[i].x, wps_screen_point[i].y, 0, 0, eeprom_buffer.params.Map_V_align, eeprom_buffer.params.Map_H_align, 0, SIZE_TO_FONT[eeprom_buffer.params.Map_fontsize]);
   }
 
@@ -2155,9 +2308,9 @@ void draw_map(void) {
   if (osd_got_home == 1) {
     write_string("H", wps_screen_point[0].x, wps_screen_point[0].y, 0, 0, eeprom_buffer.params.Map_V_align, eeprom_buffer.params.Map_H_align, 0, SIZE_TO_FONT[eeprom_buffer.params.Map_fontsize]);
   }
-
+  
   // Draw UAV (if GPS location known)
-  if (osd_fix_type > 1) {
+  if (osdproc_osd_state.osd_fix_type > 1) {
     //draw heading
     POLYGON2D suav;
     suav.state       = 1;
@@ -2168,7 +2321,7 @@ void draw_map(void) {
     VECTOR2D_INITXYZ(&(suav.vlist_local[1]), -5, 8);
     VECTOR2D_INITXYZ(&(suav.vlist_local[2]), 5, 8);
     Reset_Polygon2D(&suav);
-    Rotate_Polygon2D(&suav, osd_heading);
+    Rotate_Polygon2D(&suav, osdproc_osd_state.osd_heading);
     write_line_outlined(suav.vlist_trans[0].x + suav.x0, suav.vlist_trans[0].y + suav.y0,
                         suav.vlist_trans[1].x + suav.x0, suav.vlist_trans[1].y + suav.y0, 2, 2, 0, 1);
     write_line_outlined(suav.vlist_trans[0].x + suav.x0, suav.vlist_trans[0].y + suav.y0,
@@ -2176,6 +2329,7 @@ void draw_map(void) {
   }
 }
 
+/*
 void DJI_test(void) {
   char tmp_str[100] = { 0 };
 
@@ -2228,3 +2382,4 @@ void DJI_test(void) {
 
   draw_linear_compass(osd_heading, osd_home_bearing, 120, 180, GRAPHICS_X_MIDDLE, GRAPHICS_Y_MIDDLE + 80, 15, 30, 5, 8, 0);
 }
+*/

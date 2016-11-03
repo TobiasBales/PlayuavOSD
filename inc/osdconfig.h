@@ -7,10 +7,10 @@
 #define EERROM_SIZE                             1024
 
 // Version number: major.minor.revision (1.2.6 for example)
-#define PLAYUAV_VERSION_NUMBER          "1.1.1"
+#define PLAYUAV_VERSION_NUMBER          "1.1.2"
 // Change this to distinguish the release in some fashion that
 // version number doesn't cover
-#define PLAYUAV_VERSION_DESCRIPTION     "SLG BETA 2"
+#define PLAYUAV_VERSION_DESCRIPTION     "CONCURRENCY FIXES - 11/01/2016"
 
 void vTaskVCP(void *pvParameters);
 

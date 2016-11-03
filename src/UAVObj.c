@@ -117,6 +117,7 @@ void uav3D_init(void) {
                    -eeprom_buffer.params.Atti_3D_posY + GRAPHICS_Y_MIDDLE, 0);
   Translate_OBJECT4DV1(&uav3D, &v);
   //scale the mode
+  float atti_3d_scale = get_atti_3d_scale();
   VECTOR4D_INITXYZ(&v, atti_3d_scale, atti_3d_scale, 0);
   Scale_OBJECT4DV1(&uav3D, &v);
 
@@ -139,6 +140,7 @@ void simple_attitude_init(void) {
     VECTOR2D_INITXYZ(&(simple_attitude.vlist_local[index + 3]), x + line_length, 0);
     i++;
   }
+  float atti_mp_scale = get_atti_mp_scale();
   Scale_Polygon2D(&simple_attitude, atti_mp_scale, atti_mp_scale);
 }
 
@@ -224,6 +226,7 @@ void uav2D_init(void) {
 
 
   // do a quick scale on the vertices
+  float atti_mp_scale = get_atti_mp_scale();  
   Scale_Polygon2D(&uav2D, atti_mp_scale, atti_mp_scale);
 
   // initialize roll scale

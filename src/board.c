@@ -28,17 +28,57 @@
 #include "osdvar.h"
 #include <math.h>
 
+
 void vTaskHeartBeat(void *pvParameters);
 void vTask10HZ(void *pvParameters);
 void triggerVideo(void);
 void triggerPanel(void);
 void checkDefaultParam(void);
 
+// Intra-task communication semaphores
+extern xSemaphoreHandle onScreenDisplaySemaphore;
+extern xSemaphoreHandle onMavlinkSemaphore;
+extern xSemaphoreHandle onUAVTalkSemaphore;
+
+// This mutex controls access to the Mavlink OSD State
+extern xSemaphoreHandle osd_state_mavlink_mutex;
+// This mutex controls access to the airlock OSD State
+extern xSemaphoreHandle osd_state_airlock_mutex;
+// this mutex controls access to other OSD state
+extern xSemaphoreHandle osd_state_adhoc_mutex;
+
+// This is the actual Mavlink OSDState. 
+// Only access via osd_state_mavlink_mutex!
+extern osd_state mavlink_osd_state;
+
 uint8_t video_switch = 0;
 
 xTaskHandle xTaskVCPHandle;
 
 int32_t pwmPanelNormal = 0;
+
+void set_up_offsets_and_scale() {
+  // Take the ad-hoc mutex
+  if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+    //fabs, make sure not broken the VBI
+    adhoc_osd_state.osd_offset_Y = fabs(eeprom_buffer.params.osd_offsetY);
+
+    adhoc_osd_state.osd_offset_X = eeprom_buffer.params.osd_offsetX;
+    if (eeprom_buffer.params.osd_offsetX_sign == 0) {
+        adhoc_osd_state.osd_offset_X = adhoc_osd_state.osd_offset_X * -1;
+    }
+
+    adhoc_osd_state.atti_mp_scale = (float)eeprom_buffer.params.Atti_mp_scale_real + (float)eeprom_buffer.params.Atti_mp_scale_frac * 0.01;
+    adhoc_osd_state.atti_3d_scale = (float)eeprom_buffer.params.Atti_3D_scale_real + (float)eeprom_buffer.params.Atti_3D_scale_frac * 0.01;
+    adhoc_osd_state.atti_3d_min_clipX = eeprom_buffer.params.Atti_mp_posX - (uint32_t)(22 * adhoc_osd_state.atti_mp_scale);
+    adhoc_osd_state.atti_3d_max_clipX = eeprom_buffer.params.Atti_mp_posX + (uint32_t)(22 * adhoc_osd_state.atti_mp_scale);
+    adhoc_osd_state.atti_3d_min_clipY = eeprom_buffer.params.Atti_mp_posY - (uint32_t)(30 * adhoc_osd_state.atti_mp_scale);
+    adhoc_osd_state.atti_3d_max_clipY = eeprom_buffer.params.Atti_mp_posY + (uint32_t)(34 * adhoc_osd_state.atti_mp_scale);      
+           
+    // Release the ad-hoc mutex
+    xSemaphoreGive(osd_state_adhoc_mutex);
+  }  
+}
 
 void board_init(void) {
   GPIO_InitTypeDef gpio;
@@ -106,7 +146,6 @@ void board_init(void) {
 
   Build_Sin_Cos_Tables();
 
-
   bool force_clear_params = false;
   force_clear_params = test_force_clear_all_params();
   if (force_clear_params)
@@ -117,21 +156,8 @@ void board_init(void) {
   LoadParams();
   checkDefaultParam();
   SPI_MAX7456_init();
-
-  //fabs, make sure not broken the VBI
-  osd_offset_Y = fabs(eeprom_buffer.params.osd_offsetY);
-
-  osd_offset_X = eeprom_buffer.params.osd_offsetX;
-  if (eeprom_buffer.params.osd_offsetX_sign == 0) {
-    osd_offset_X = osd_offset_X * -1;
-  }
-
-  atti_mp_scale = (float)eeprom_buffer.params.Atti_mp_scale_real + (float)eeprom_buffer.params.Atti_mp_scale_frac * 0.01;
-  atti_3d_scale = (float)eeprom_buffer.params.Atti_3D_scale_real + (float)eeprom_buffer.params.Atti_3D_scale_frac * 0.01;
-  atti_3d_min_clipX = eeprom_buffer.params.Atti_mp_posX - (uint32_t)(22 * atti_mp_scale);
-  atti_3d_max_clipX = eeprom_buffer.params.Atti_mp_posX + (uint32_t)(22 * atti_mp_scale);
-  atti_3d_min_clipY = eeprom_buffer.params.Atti_mp_posY - (uint32_t)(30 * atti_mp_scale);
-  atti_3d_max_clipY = eeprom_buffer.params.Atti_mp_posY + (uint32_t)(34 * atti_mp_scale);
+  
+  set_up_offsets_and_scale();
 }
 
 void module_init(void) {
@@ -160,12 +186,19 @@ void module_init(void) {
     break;
   }
 
-
 //	xTaskCreate( DJICanTask, (const char*)"DJI CAN",
 //	STACK_SIZE_MIN, NULL, THREAD_PRIO_HIGH, NULL );
 }
 
+// Initialize the semaphores used for intra-task communication
+void task_semaphores_init() {
+  vSemaphoreCreateBinary(onScreenDisplaySemaphore);
+  vSemaphoreCreateBinary(onMavlinkSemaphore);
+  vSemaphoreCreateBinary(onUAVTalkSemaphore);
+}
+
 void vTaskHeartBeat(void *pvParameters) {
+    
   for (;; )
   {
     LEDToggle(LED_GREEN);
@@ -173,16 +206,90 @@ void vTaskHeartBeat(void *pvParameters) {
   }
 }
 
+void update_current_consumed_estimate() {    
+    // Update the values directly (in/from) the airlock, which is presumed to be
+    // reasonably current
+    if (xSemaphoreTake(osd_state_airlock_mutex, portMAX_DELAY) == pdTRUE ) {
+         float current_increment = (airlock_osd_state.osd_curr_A * 0.00027777778f);
+        // Release the airlock mutex
+        xSemaphoreGive(osd_state_airlock_mutex);
+                
+        // calculate osd_curr_consumed_mah(simulation) 
+        if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+            adhoc_osd_state.osd_curr_consumed_mah += current_increment; 
+            // Release the ad-hoc mutex
+            xSemaphoreGive(osd_state_adhoc_mutex);
+        }        
+    }    
+}     
+
+void update_total_trip_distance() {
+    // Update the values directly (in/from) the airlock, which is presumed to be
+    // reasonably current
+    if (xSemaphoreTake(osd_state_airlock_mutex, portMAX_DELAY) == pdTRUE ) {
+        float additional_trip_distance = 0.0f;
+        
+        // calculate osd_total_trip_dist(simulation)
+        if (airlock_osd_state.osd_groundspeed > 1.0f) {
+            // jmmods > for calculation of trip , Groundspeed is better than airspeed        
+            additional_trip_distance = (airlock_osd_state.osd_groundspeed * 0.1f); 
+        }    
+        // Release the airlock mutex
+        xSemaphoreGive(osd_state_airlock_mutex);     
+
+        // Update total trip distance using the ad-hoc mutex & global structure
+        if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+            adhoc_osd_state.osd_total_trip_dist += additional_trip_distance; 
+            // Release the ad-hoc mutex
+            xSemaphoreGive(osd_state_adhoc_mutex);                          
+        }
+    }
+}  
+
+void update_mission_counts() {
+    bool should_request_mission_count = false;
+    bool should_request_mission_item = false;
+    uint16_t TEMP_current_mission_item_request_index = -1;
+        
+    // These updates happen as early as Mavlink since the Mavlink task
+    // looks at these values to determine when to query / re-query for Mission waypoints.
+
+    // Lock access to Mavlink OSDState via mutex
+    if (xSemaphoreTake(osd_state_mavlink_mutex, portMAX_DELAY) == pdTRUE ) {
+        if (mavlink_osd_state.enable_mission_count_request == 1)
+        {
+          should_request_mission_count = true;
+          mavlink_osd_state.enable_mission_count_request = 0;
+        }
+
+        if (mavlink_osd_state.enable_mission_item_request == 1)
+        {
+          should_request_mission_item = true;
+          TEMP_current_mission_item_request_index = mavlink_osd_state.current_mission_item_req_index;
+        }
+        // Release the Mavlink mutex ASAP
+        xSemaphoreGive(osd_state_mavlink_mutex);
+
+        // These are Mavlink calls, and might be slow, so we take pains to do them
+        // outside the possession of the mutex to prevent any potential pend.
+
+        if (should_request_mission_count == true) {
+          request_mission_count();
+        }
+        
+        if (should_request_mission_item == true){
+            request_mission_item(TEMP_current_mission_item_request_index);
+        }
+    }
+}
+
 void vTask10HZ(void *pvParameters) {
   for (;; )
   {
     vTaskDelay(100 / portTICK_RATE_MS);
 
-    // calculate osd_curr_consumed_mah(simulation)
-    osd_curr_consumed_mah += (osd_curr_A * 0.00027777778f);
-
-    // calculate osd_total_trip_dist(simulation)
-    if (osd_groundspeed > 1.0f) osd_total_trip_dist += (osd_groundspeed * 0.1f);           // jmmods > for calculation of trip , Groundspeed is better than airspeed
+    update_current_consumed_estimate();
+    update_total_trip_distance();
 
     //trigger video switch
     if (eeprom_buffer.params.PWM_Video_en)
@@ -196,56 +303,52 @@ void vTask10HZ(void *pvParameters) {
       triggerPanel();
     }
 
-    //if no mavlink update for 2 secs, show waring and request mavlink rate again
-    if (GetSystimeMS() > (lastMAVBeat + 2200))
+    //if no mavlink update for 2 secs, show warning and request mavlink rate again
+    if (GetSystimeMS() > (get_lastMAVBeat() + 2200))
     {
-      heatbeat_start_time = 0;
-      waitingMAVBeats = 1;
+      set_heartbeat_start_time(0);
+      set_waitingMAVBeats(1);
     }
 
-    if (enable_mav_request == 1)
+    if (get_enable_mav_request() == 1)
     {
       for (int n = 0; n < 3; n++) {
         request_mavlink_rates();            //Three times to certify it will be readed
         vTaskDelay(50 / portTICK_RATE_MS);
       }
-      enable_mav_request = 0;
-      waitingMAVBeats = 0;
-      lastMAVBeat = GetSystimeMS();
+      set_enable_mav_request(0);
+      set_waitingMAVBeats(0);
+      set_lastMAVBeat(GetSystimeMS());
     }
 
-    if (enable_mission_count_request == 1)
-    {
-      request_mission_count();
-      enable_mission_count_request = 0;
-    }
-
-    if (enable_mission_item_request == 1)
-    {
-      request_mission_item(current_mission_item_req_index);
-    }
-
+    update_mission_counts();
   }
 }
 
 void triggerVideo(void) {
   static uint16_t video_ch_raw;
   static bool video_trigger = false;
-
+  
   video_ch_raw = 0;
-  if (eeprom_buffer.params.PWM_Video_ch == 5) video_ch_raw = osd_chan5_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 6) video_ch_raw = osd_chan6_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 7) video_ch_raw = osd_chan7_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 8) video_ch_raw = osd_chan8_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 9) video_ch_raw = osd_chan9_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 10) video_ch_raw = osd_chan10_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 11) video_ch_raw = osd_chan11_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 12) video_ch_raw = osd_chan12_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 13) video_ch_raw = osd_chan13_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 14) video_ch_raw = osd_chan14_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 15) video_ch_raw = osd_chan15_raw;
-  else if (eeprom_buffer.params.PWM_Video_ch == 16) video_ch_raw = osd_chan16_raw;
 
+  // Take airlock mutex
+  if (xSemaphoreTake(osd_state_airlock_mutex, portMAX_DELAY) == pdTRUE ) {
+      if (eeprom_buffer.params.PWM_Video_ch == 5) video_ch_raw = airlock_osd_state.osd_chan5_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 6) video_ch_raw = airlock_osd_state.osd_chan6_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 7) video_ch_raw = airlock_osd_state.osd_chan7_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 8) video_ch_raw = airlock_osd_state.osd_chan8_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 9) video_ch_raw = airlock_osd_state.osd_chan9_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 10) video_ch_raw = airlock_osd_state.osd_chan10_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 11) video_ch_raw = airlock_osd_state.osd_chan11_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 12) video_ch_raw = airlock_osd_state.osd_chan12_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 13) video_ch_raw = airlock_osd_state.osd_chan13_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 14) video_ch_raw = airlock_osd_state.osd_chan14_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 15) video_ch_raw = airlock_osd_state.osd_chan15_raw;
+      else if (eeprom_buffer.params.PWM_Video_ch == 16) video_ch_raw = airlock_osd_state.osd_chan16_raw;
+      // Release the airlock mutex
+      xSemaphoreGive(osd_state_airlock_mutex);
+  }      
+      
   if (eeprom_buffer.params.PWM_Video_mode == 0) {
     if (video_ch_raw > eeprom_buffer.params.PWM_Video_value) {
       if (!video_trigger) {
@@ -276,40 +379,76 @@ void triggerVideo(void) {
   }
 }
 
+// Request a reload of the Waypoints from outside the Mavlink thread.
+// (Requests outside the Mavlink thread require mutex locking)
+void request_reload_of_waypoints_outside_mavlink_thread() {
+    // Lock access to Mavlink OSDState via mutex
+    if (xSemaphoreTake(osd_state_mavlink_mutex, portMAX_DELAY) == pdTRUE ) {
+        // Request a reload of waypoints
+        mavlink_osd_state.enable_mission_count_request = 1;
+        // Release the Mavlink OSDState mutex
+        xSemaphoreGive(osd_state_mavlink_mutex);
+    }
+}
+
 void triggerPanel(void) {
   static uint16_t panel_ch_raw;
   static bool panel_trigger = false;
 
   panel_ch_raw = 0;
-  if (eeprom_buffer.params.PWM_Panel_ch == 5) panel_ch_raw = osd_chan5_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 6) panel_ch_raw = osd_chan6_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 7) panel_ch_raw = osd_chan7_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 8) panel_ch_raw = osd_chan8_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 9) panel_ch_raw = osd_chan9_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 10) panel_ch_raw = osd_chan10_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 11) panel_ch_raw = osd_chan11_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 12) panel_ch_raw = osd_chan12_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 13) panel_ch_raw = osd_chan13_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 14) panel_ch_raw = osd_chan14_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 15) panel_ch_raw = osd_chan15_raw;
-  else if (eeprom_buffer.params.PWM_Panel_ch == 16) panel_ch_raw = osd_chan16_raw;
+  
+  // Take airlock mutex
+  if (xSemaphoreTake(osd_state_airlock_mutex, portMAX_DELAY) == pdTRUE ) {
+      if (eeprom_buffer.params.PWM_Panel_ch == 5) panel_ch_raw = airlock_osd_state.osd_chan5_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 6) panel_ch_raw = airlock_osd_state.osd_chan6_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 7) panel_ch_raw = airlock_osd_state.osd_chan7_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 8) panel_ch_raw = airlock_osd_state.osd_chan8_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 9) panel_ch_raw = airlock_osd_state.osd_chan9_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 10) panel_ch_raw = airlock_osd_state.osd_chan10_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 11) panel_ch_raw = airlock_osd_state.osd_chan11_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 12) panel_ch_raw = airlock_osd_state.osd_chan12_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 13) panel_ch_raw = airlock_osd_state.osd_chan13_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 14) panel_ch_raw = airlock_osd_state.osd_chan14_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 15) panel_ch_raw = airlock_osd_state.osd_chan15_raw;
+      else if (eeprom_buffer.params.PWM_Panel_ch == 16) panel_ch_raw = airlock_osd_state.osd_chan16_raw;
+      // Release the airlock mutex
+      xSemaphoreGive(osd_state_airlock_mutex);
+  }    
+  
+    // Did the panel value get changed by this routine?
+    bool panel_value_changed = false;
 
-  if (eeprom_buffer.params.PWM_Panel_mode == 0) {
-    if ((panel_ch_raw > eeprom_buffer.params.PWM_Panel_value)) {
-      if (!panel_trigger) {
-        panel_trigger = true;
-        current_panel++;
+    // Panel info access is controlled by ad-hoc mutex
+    if (xSemaphoreTake(osd_state_adhoc_mutex, portMAX_DELAY) == pdTRUE ) {
+      int original_panel_value = adhoc_osd_state.current_panel;
+      if (eeprom_buffer.params.PWM_Panel_mode == 0) {
+        if ((panel_ch_raw > eeprom_buffer.params.PWM_Panel_value)) {
+          if (!panel_trigger) {
+            panel_trigger = true;
+            adhoc_osd_state.current_panel++;
+          }
+        } else {
+          panel_trigger = false;
+        }
+      } else {
+        if (panel_ch_raw > 950 && panel_ch_raw < 2050) {
+          adhoc_osd_state.current_panel = ceil((panel_ch_raw - 950) / (1100 / (float) eeprom_buffer.params.Max_panels));
+        } else {
+          adhoc_osd_state.current_panel = 1;
+        }
       }
-    } else {
-      panel_trigger = false;
+      
+      panel_value_changed = adhoc_osd_state.current_panel != original_panel_value;
+      
+      // Release the ad-hoc mutex
+      xSemaphoreGive(osd_state_adhoc_mutex);
     }
-  } else {
-    if (panel_ch_raw > 950 && panel_ch_raw < 2050) {
-      current_panel = ceil((panel_ch_raw - 950) / (1100 / (float) eeprom_buffer.params.Max_panels));
-    } else {
-      current_panel = 1;
+    
+    // If we changed panels, reload the waypoints 
+    // TODO: Make conditional on EEPROM value to allow configuration
+    if (panel_value_changed) {
+        request_reload_of_waypoints_outside_mavlink_thread();
     }
-  }
 }
 
 uint32_t GetSystimeMS(void) {
