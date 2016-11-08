@@ -296,6 +296,7 @@ void RenderScreen(void) {
   draw_watts();
   draw_wind();
   draw_map();
+  draw_rc_channels();
 
   draw_warning();  
   draw_panel_changed();
@@ -1635,6 +1636,98 @@ void draw_head_wp_home() {
     write_string(tmp_str, wpCX, wpCY, 0, 0, TEXT_VA_MIDDLE, TEXT_HA_CENTER, 0, SIZE_TO_FONT[0]);
   }
 }
+
+// Show the current values of the RC Channels
+void draw_rc_channels(void) {
+
+    if (!enabledAndShownOnPanel(eeprom_buffer.params.RC_Channels_en,
+                                eeprom_buffer.params.RC_Channels_panel)) {
+        return;
+    }
+  
+  char tmp_str[15] = { 0 };
+  
+  // Load channel values into an easier-to-use array.
+  // Note the deliberate off-by-one addressing!
+  uint16_t channel_values[17];
+  
+  channel_values[1] = osdproc_osd_state.osd_chan1_raw;
+  channel_values[2] = osdproc_osd_state.osd_chan2_raw;
+  channel_values[3] = osdproc_osd_state.osd_chan3_raw;
+  channel_values[4] = osdproc_osd_state.osd_chan4_raw;
+  channel_values[5] = osdproc_osd_state.osd_chan5_raw;
+  channel_values[6] = osdproc_osd_state.osd_chan6_raw;
+  channel_values[7] = osdproc_osd_state.osd_chan7_raw;
+  channel_values[8] = osdproc_osd_state.osd_chan8_raw;
+  channel_values[9] = osdproc_osd_state.osd_chan9_raw;
+  channel_values[10] = osdproc_osd_state.osd_chan10_raw;
+  channel_values[11] = osdproc_osd_state.osd_chan11_raw;
+  channel_values[12] = osdproc_osd_state.osd_chan12_raw;
+  channel_values[13] = osdproc_osd_state.osd_chan13_raw;
+  channel_values[14] = osdproc_osd_state.osd_chan14_raw;
+  channel_values[15] = osdproc_osd_state.osd_chan15_raw;
+  channel_values[16] = osdproc_osd_state.osd_chan16_raw;  
+    
+  // It is likely better to directly record the count of channels reported 
+  // by a Mavlink message, but this will probably work as a starting point.
+  int number_of_rc_channels = osdproc_osd_state.osd_chan_cnt_above_eight ? 16 : 8;
+  
+  int posX = eeprom_buffer.params.RC_Channels_posx;
+  int posY = eeprom_buffer.params.RC_Channels_posy;
+  
+  // Could make this configurable I suppose?
+  int bar_width = 40;
+  
+  int font_number_for_rc_channel_text = 0;
+  struct FontEntry font_info;
+  fetch_font_info(0, font_number_for_rc_channel_text, &font_info, NULL);
+  struct FontDimensions text_dim;
+  
+  // Go through each of the RC Channels. Again, note that channel index starts at 1, not 0.
+  for (uint32_t channel_index = 1; channel_index <= number_of_rc_channels; channel_index++) { 
+    uint32_t current_channel_value = channel_values[channel_index];
+    
+    // Write as text value    
+    // --------------------
+    sprintf(tmp_str, "CH %d %4d", (int)channel_index, current_channel_value);
+    calc_text_dimensions(tmp_str, font_info, 1, 0, &text_dim);               
+    int line_y_offset = (channel_index-1) * text_dim.height;
+    int line_y_pos = posY + line_y_offset;
+    write_string(tmp_str, posX, line_y_pos, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);
+    
+    // Also draw as a bar graphic   
+    // --------------------------
+    int bar_pos_x = posX + text_dim.width;
+    int bar_pos_y = line_y_pos;
+    
+    int bar_height = text_dim.height - (int)(text_dim.height * 0.20);
+    
+    // Draw rectangle for bar
+     write_filled_rectangle_lm(bar_pos_x, bar_pos_y, bar_width, bar_height, 1, 0);
+     write_rectangle_outlined(bar_pos_x, bar_pos_y, bar_width, bar_height, 0, 1);
+     // Here we write an extra line at each end; this keeps the 3-pixel wide stripe
+     // from writing outside the boundaries of the box below.
+     write_rectangle_outlined(bar_pos_x-1, bar_pos_y, bar_width+1, bar_height, 0, 1);
+
+    // Normalize 1000-2000 PPM value to 0-1000
+    int normalized_channel_value = current_channel_value - 1000;
+    if (normalized_channel_value < 0) {
+        normalized_channel_value = 0;
+    } else if (normalized_channel_value > 1000) {
+        normalized_channel_value = 1000;
+    }
+
+    // Draw vertical stripe marking channel value on bar rectangle
+    
+    // X offset position for the stripe relative to the bar
+    int stripe_offset_x = (normalized_channel_value * bar_width) / 1000;    
+
+    // Stripe is 3 pixels wide
+    write_vline_lm(bar_pos_x + stripe_offset_x - 1, bar_pos_y, bar_pos_y + bar_height, 1, 1);    
+    write_vline_lm(bar_pos_x + stripe_offset_x, bar_pos_y, bar_pos_y + bar_height, 1, 1);    
+    write_vline_lm(bar_pos_x + stripe_offset_x + 1, bar_pos_y, bar_pos_y + bar_height, 1, 1);          
+  }  
+}  
 
 void draw_wind(void) {
   if (!enabledAndShownOnPanel(eeprom_buffer.params.Wind_en,

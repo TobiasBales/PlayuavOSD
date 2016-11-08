@@ -61,6 +61,7 @@ void draw_climb_rate(void);
 void draw_rssi(void);
 void draw_link_quality(void);
 void draw_efficiency(void);
+void draw_rc_channels(void);
 void draw_wind(void);
 void draw_map(void);
 void draw_panel_changed(void);

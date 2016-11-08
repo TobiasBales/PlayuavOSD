@@ -7,10 +7,10 @@
 #define EERROM_SIZE                             1024
 
 // Version number: major.minor.revision (1.2.6 for example)
-#define PLAYUAV_VERSION_NUMBER          "1.1.2"
+#define PLAYUAV_VERSION_NUMBER          "1.2.0"
 // Change this to distinguish the release in some fashion that
 // version number doesn't cover
-#define PLAYUAV_VERSION_DESCRIPTION     "CONCURRENCY FIXES - 11/01/2016"
+#define PLAYUAV_VERSION_DESCRIPTION     "RC CHANNELS - 11/07/2016"
 
 void vTaskVCP(void *pvParameters);
 
@@ -365,8 +365,14 @@ typedef union {
     // Number of milliseconds to show the version splash panel
     uint16_t version_splash_milliseconds_to_show;
     
-    // From firmware_ver 12, PLAYUAV_VERSION 1.1.1, "SLG BETA 2"    
+    // From firmware_ver 12, PLAYUAV_VERSION 1.1.2, "SLG BETA 2"    
     uint16_t error_alert_milliseconds_to_show;
+    
+    // From firmware_ver 13, PLAYUAV_VERSION 1.1.3, "RC CHANNELS"    
+    uint16_t RC_Channels_en;
+    uint16_t RC_Channels_panel;
+    uint16_t RC_Channels_posx;
+    uint16_t RC_Channels_posy;
     
 //		//below is unused. if add a param, reduce one item here
 //		uint16_t unused[EERROM_SIZE/2 - 104];

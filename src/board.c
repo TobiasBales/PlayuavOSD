@@ -587,6 +587,15 @@ void checkDefaultParam() {
     eeprom_buffer.params.error_alert_milliseconds_to_show = 1000;
     bNeedUpdateFlash = true;
   }
+    
+  if (eeprom_buffer.params.firmware_ver < 13) {
+    eeprom_buffer.params.firmware_ver = 13;
+    eeprom_buffer.params.RC_Channels_en = 0;
+    eeprom_buffer.params.RC_Channels_panel = 2;
+    eeprom_buffer.params.RC_Channels_posx = 55;
+    eeprom_buffer.params.RC_Channels_posy = 40;
+    bNeedUpdateFlash = true;
+  }
   
   bool ret = false;
   if (bNeedUpdateFlash)
