@@ -531,24 +531,32 @@ void draw_home_direction() {
   }
 
   // For debugging the infamous bad home direction bug
-  draw_home_direction_debug_info(x, y, absolute_home_bearing, uav_compass_bearing, relative_home_bearing);
+  draw_home_direction_debug_info(absolute_home_bearing, uav_compass_bearing, relative_home_bearing);
 }
 
 // Debug output for direction to home calculation
-void draw_home_direction_debug_info(int x, int y, float absolute_home_bearing, float uav_compass_bearing, float relative_home_bearing)
+void draw_home_direction_debug_info(float absolute_home_bearing, float uav_compass_bearing, float relative_home_bearing)
 {
+  if (!enabledAndShownOnPanel(eeprom_buffer.params.HomeDirectionDebugInfo_enabled,
+                              eeprom_buffer.params.HomeDirectionDebugInfo_panel)) {
+    return;
+  }    
+       
+  int xPos = eeprom_buffer.params.HomeDirectionDebugInfo_posX;
+  int yPos = eeprom_buffer.params.HomeDirectionDebugInfo_posY;    
+    
   char tmp_str[15] = { 0 };
   // font_index: 0 = small, 1 = medium, 2 = large
   int font_index = 0;
   
   sprintf(tmp_str, "abs h.b. %d", (int32_t)absolute_home_bearing);
-  write_string(tmp_str, x, y + 15, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);
+  write_string(tmp_str, xPos, yPos + 15, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);
   
   sprintf(tmp_str, "rel h.b. %d", (int32_t)relative_home_bearing);
-  write_string(tmp_str, x, y + 30, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);
+  write_string(tmp_str, xPos, yPos + 30, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);
   
   sprintf(tmp_str, "comp. b %d", (int32_t)uav_compass_bearing);
-  write_string(tmp_str, x, y + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);  
+  write_string(tmp_str, xPos, yPos + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[font_index]);  
 }
 
 void draw_uav2d() {

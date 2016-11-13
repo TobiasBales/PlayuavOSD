@@ -597,6 +597,15 @@ void checkDefaultParam() {
     bNeedUpdateFlash = true;
   }
   
+  if (eeprom_buffer.params.firmware_ver < 14) {
+    eeprom_buffer.params.firmware_ver = 14;
+    eeprom_buffer.params.HomeDirectionDebugInfo_enabled = 0;
+    eeprom_buffer.params.HomeDirectionDebugInfo_panel = 2;
+    eeprom_buffer.params.HomeDirectionDebugInfo_posX = 65;
+    eeprom_buffer.params.HomeDirectionDebugInfo_posY = 70;
+    bNeedUpdateFlash = true;
+  }  
+  
   bool ret = false;
   if (bNeedUpdateFlash)
   {

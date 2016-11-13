@@ -31,7 +31,7 @@ void draw_uav2d(void);
 void draw_throttle(void);
 void draw_simple_attitude(void);
 void draw_home_direction(void);
-void draw_home_direction_debug_info(int x, int y, float absolute_home_bearing, float uav_compass_bearing, float relative_home_bearing);
+void draw_home_direction_debug_info(float absolute_home_bearing, float uav_compass_bearing, float relative_home_bearing);
 void draw_radar(void);
 void draw_flight_mode(void);
 void draw_arm_state(void);
