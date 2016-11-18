@@ -443,12 +443,6 @@ void triggerPanel(void) {
       // Release the ad-hoc mutex
       xSemaphoreGive(osd_state_adhoc_mutex);
     }
-    
-    // If we changed panels, reload the waypoints 
-    // TODO: Make conditional on EEPROM value to allow configuration
-    if (panel_value_changed) {
-        request_reload_of_waypoints_outside_mavlink_thread();
-    }
 }
 
 uint32_t GetSystimeMS(void) {

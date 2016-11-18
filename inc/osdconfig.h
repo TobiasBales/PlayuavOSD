@@ -7,10 +7,10 @@
 #define EERROM_SIZE                             1024
 
 // Version number: major.minor.revision (1.2.6 for example)
-#define PLAYUAV_VERSION_NUMBER          "1.3.0"
+#define PLAYUAV_VERSION_NUMBER          "1.3.1"
 // Change this to distinguish the release in some fashion that
 // version number doesn't cover
-#define PLAYUAV_VERSION_DESCRIPTION     "HOME DIR DEBUG - 11/09/2016"
+#define PLAYUAV_VERSION_DESCRIPTION     "WAYPOINT SINGLE LOAD - 11/16/2016"
 
 void vTaskVCP(void *pvParameters);
 
