@@ -43,3 +43,4 @@ tool/osdconfig/bin/Debug/*
 *.application
 *.manifest
 *.pdb
+/.gitconfig
