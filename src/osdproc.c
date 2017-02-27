@@ -63,9 +63,9 @@ const char METRIC_SPEED[] = "KM/H";         //kilometer per hour
 const char METRIC_DIST_SHORT[] = "M";       //meter
 const char METRIC_DIST_LONG[] = "KM";       //kilometer
 
-const char IMPERIAL_SPEED[] = "M/H";        //mile per hour
+const char IMPERIAL_SPEED[] = "Mi/H";        //mile per hour
 const char IMPERIAL_DIST_SHORT[] = "F";     //feet
-const char IMPERIAL_DIST_LONG[] = "M";      //mile
+const char IMPERIAL_DIST_LONG[] = "Mi";      //mile
 
 // Unit conversion constants
 float convert_speed = 0.0f;
@@ -2198,7 +2198,8 @@ void draw_altitude_scale() {
   if ((eeprom_buffer.params.Alt_Scale_align == 1) && (posX > 15)) {
     posX += 10;
   }
-  write_string("M", posX,
+  sprintf(tmp_str, dist_unit_short);
+  write_string(tmp_str, posX,
                eeprom_buffer.params.Alt_Scale_posY + 40, 0, 0, TEXT_VA_TOP,
                eeprom_buffer.params.Alt_Scale_align, 0,
                SIZE_TO_FONT[0]);
