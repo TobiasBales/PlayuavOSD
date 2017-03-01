@@ -10,7 +10,7 @@
 #define PLAYUAV_VERSION_NUMBER          "1.3.2"
 // Change this to distinguish the release in some fashion that
 // version number doesn't cover
-#define PLAYUAV_VERSION_DESCRIPTION     "ERROR IN WARNING BETA - 02/26/2017"
+#define PLAYUAV_VERSION_DESCRIPTION     "ERROR IN WARNING BETA 2 - 03/01/2017"
 
 void vTaskVCP(void *pvParameters);
 
