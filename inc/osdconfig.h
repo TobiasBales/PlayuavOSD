@@ -10,7 +10,9 @@
 #define PLAYUAV_VERSION_NUMBER          "1.3.2"
 // Change this to distinguish the release in some fashion that
 // version number doesn't cover
-#define PLAYUAV_VERSION_DESCRIPTION     "ERROR IN WARNING BETA 2 - 03/01/2017"
+// Max length of string shown that doesn't cause GUI glitches is at least 33 characters:
+//                                      |---------------------------------|
+#define PLAYUAV_VERSION_DESCRIPTION     "IMPERIAL+WARNING FIXES 03/02/2017"
 
 void vTaskVCP(void *pvParameters);
 
