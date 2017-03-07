@@ -297,7 +297,6 @@ void RenderScreen(void) {
   draw_wind();
   draw_map();
   draw_rc_channels();
-
   draw_warning();  
   draw_panel_changed();
   
@@ -1774,10 +1773,11 @@ void draw_wind(void) {
   write_string(tmp_str, posX + 15, posY, 0, 0, TEXT_VA_MIDDLE, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);
 }
 
-/*
-int debug_warnings_x = 30;
+
+int debug_warnings_x = 60;
 int debug_warnings_y = 30;
 
+/*
 void debug_warnings_one() {    
     sprintf(tmp_str, "GetSystimeMS(): %d", (int)GetSystimeMS());
     write_string(tmp_str, debug_warnings_x, debug_warnings_y, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);
@@ -1785,166 +1785,183 @@ void debug_warnings_one() {
     sprintf(tmp_str, "last_warn_time: %d", (int)last_warn_time);
     write_string(tmp_str, debug_warnings_x, debug_warnings_y + 15, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);
 }
+*/
 
+/*
 void debug_warnings_two() {    
     sprintf(tmp_str, "osd_fix_type: %d", osd_fix_type);
     write_string(tmp_str, debug_warnings_x, debug_warnings_y + 30, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);    
 }
+*/
 
 void debug_warnings_three(uint8_t warning[], const int warn_cnt) {    
     sprintf(tmp_str, "last_warn_type: %d", last_warn_type);
     write_string(tmp_str, debug_warnings_x, debug_warnings_y + 45, 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);        
     
-    for (int i = 0; i < warn_cnt; i++){
-        sprintf(tmp_str, "w[0]: %d", warning[i]);
+    for (int i = 0; i <= warn_cnt; i++){
+        sprintf(tmp_str, "w[%d]: %d", i, warning[i]);
         write_string(tmp_str, debug_warnings_x, debug_warnings_y + 60 + (i * 15), 0, 0, TEXT_VA_TOP, TEXT_HA_LEFT, 0, SIZE_TO_FONT[0]);       
     }
 }
-*/
 
-void draw_warning(void) {
-  write_string(warn_str, eeprom_buffer.params.Alarm_posX, eeprom_buffer.params.Alarm_posY, 0, 0, TEXT_VA_TOP, eeprom_buffer.params.Alarm_align, 0, SIZE_TO_FONT[eeprom_buffer.params.Alarm_fontsize]);
+const int NO_GPS_FIX_WARNING_INDEX = 0;
+const int LOW_BATTERY_WARNING_INDEX = 1;
+const int SPEED_LOW_WARNING_INDEX = 2;
+const int OVER_SPEED_WARNING_INDEX = 3;
+const int LOW_ALTITUDE_WARNING_INDEX = 4;
+const int HIGH_ALTITUDE_WARNING_INDEX = 5;
+const int NO_HOME_POSITION_SET_WARNING_INDEX = 6;
 
-  // Show each warning a given number of milliseconds
-  if ((GetSystimeMS() - last_warn_time) < eeprom_buffer.params.error_alert_milliseconds_to_show) {
-    //debug_warnings_one();
-    return;
-  }
-
-  bool haswarn = false;
-  const static int warn_cnt = 6;
-  uint8_t warning[] = { 0, 0, 0, 0, 0, 0, 0 };
-
-  //no GPS fix!
+// Calculate if there are any warnings to be shown, and if so which ones.
+void calculate_warnings(uint8_t (*p_warning)[], bool * p_haswarn) {
+  // No GPS fix
   if (eeprom_buffer.params.Alarm_GPS_status_en == 1 && (osdproc_osd_state.osd_fix_type < GPS_OK_FIX_3D)) {
     //debug_warnings_two();
-    haswarn = true;
-    warning[0] = 1;
+    *p_haswarn = true;
+    (*p_warning)[NO_GPS_FIX_WARNING_INDEX] = 1;
   }
 
-  //low batt
+  // Low battery
   if (eeprom_buffer.params.Alarm_low_batt_en == 1 && (osdproc_osd_state.osd_battery_remaining_A < eeprom_buffer.params.Alarm_low_batt)) {
-    haswarn = true;
-    warning[1] = 1;
+    *p_haswarn = true;
+    (*p_warning)[LOW_BATTERY_WARNING_INDEX] = 1;
   }
 
+  // Calculate speed
   float spd_comparison = osdproc_osd_state.osd_groundspeed;
   if (eeprom_buffer.params.Spd_Scale_type == 1) {
     spd_comparison = osdproc_osd_state.osd_airspeed;
   }
   spd_comparison *= convert_speed;
-  //under speed
+  
+  // Under speed
   if (eeprom_buffer.params.Alarm_low_speed_en == 1 && (spd_comparison < eeprom_buffer.params.Alarm_low_speed)) {
-    haswarn = true;
-    warning[2] = 1;
+    *p_haswarn = true;
+    (*p_warning)[SPEED_LOW_WARNING_INDEX] = 1;
   }
 
-  //over speed
+  // Over speed
   if (eeprom_buffer.params.Alarm_over_speed_en == 1 && (spd_comparison > eeprom_buffer.params.Alarm_over_speed)) {
-    haswarn = true;
-    warning[3] = 1;
+    *p_haswarn = true;
+    (*p_warning)[OVER_SPEED_WARNING_INDEX] = 1;
   }
 
-  // float osd_alt = 0.0f;
-  // get_osd_alt(&osd_alt);
+  // Calculate altitude
   float osd_alt = osdproc_osd_state.osd_alt;  
     
   float alt_comparison = osdproc_osd_state.osd_rel_alt;
   if (eeprom_buffer.params.Alt_Scale_type == 0) {
     alt_comparison = osd_alt;
   }
-  //under altitude
+  
+  // Low altitude
   if (eeprom_buffer.params.Alarm_low_alt_en == 1 && (alt_comparison < eeprom_buffer.params.Alarm_low_alt)) {
-    haswarn = true;
-    warning[4] = 1;
+    *p_haswarn = true;
+    (*p_warning)[LOW_ALTITUDE_WARNING_INDEX] = 1;
   }
 
-  //over altitude
+  // High altitude
   if (eeprom_buffer.params.Alarm_over_alt_en == 1 && (alt_comparison > eeprom_buffer.params.Alarm_over_alt)) {
-    haswarn = true;
-    warning[5] = 1;
+    *p_haswarn = true;
+    (*p_warning)[HIGH_ALTITUDE_WARNING_INDEX] = 1;
   }
 
-  // no home yet
+  // No home position set
   if (get_osd_got_home() == 0) {
-    haswarn = true;
-    warning[6] = 1;
+    *p_haswarn = true;
+    (*p_warning)[NO_HOME_POSITION_SET_WARNING_INDEX] = 1;
   }
+}
 
-  if (haswarn) {
+// Returns true if this warning was handled, or false if not relevant/skipped
+bool handle_warning_type(uint8_t warning[], int warning_type_index, uint8_t * p_last_warn_type, char * p_warning_string) {
+    if ((*p_last_warn_type) == warning_type_index) {
+        (*p_last_warn_type)++;
+        if (warning[warning_type_index] == 1) {
+            // Note that warn_str is a global
+            warn_str = p_warning_string;
+            return true;
+        }
+    }
+    return false;
+}
+
+void draw_warning(void) {
+  char tmp_warn_str[75] = { 0 };
+  bool haswarn = false;
+  const static int warn_cnt = 6;
+  uint8_t warning[] = { 0, 0, 0, 0, 0, 0, 0 };
+  
+  //sprintf(tmp_warn_str, "%s last_warn_type = %d", warn_str, last_warn_type);
+  sprintf(tmp_warn_str, "%s", warn_str);
+
+  // Has a warning string been set that we should display?
+  bool has_warning_string_set = ((strcmp(tmp_warn_str, "") != 0));
+  if (has_warning_string_set)
+  {
+      // Display the alarm warning string
+      write_string(tmp_warn_str, eeprom_buffer.params.Alarm_posX, eeprom_buffer.params.Alarm_posY, 0, 0, TEXT_VA_TOP, eeprom_buffer.params.Alarm_align, 0, SIZE_TO_FONT[eeprom_buffer.params.Alarm_fontsize]);
+  }
+  
+  calculate_warnings(&warning, &haswarn);  
+  //debug_warnings_three(warning, warn_cnt);
+
+  // Show each warning a given number of milliseconds
+  if ((GetSystimeMS() - last_warn_time) < eeprom_buffer.params.error_alert_milliseconds_to_show) {
+    //debug_warnings_one();
+    // Continue to show the warning until the error_alert_milliseconds_to_show interval has elapsed
+    return;
+  }  
+  
+  // If we reach here, we are done showing the current warning, if there is one, or we may have shown
+  // no warning yet. Either way, we now see if a warning was set in calculate_warnings, and if there
+  // was one, we reset the warning display clock (last_warn_time) and set the current warning string
+  // (warn_str). We will actually display the warning string the next time this routine is called.
+  
+  while (haswarn) {
     last_warn_time = GetSystimeMS();
-    // Wrap back to the start of the error type array
+    // Wrap back to the start of the error type array if needed
     if (last_warn_type > warn_cnt) {
         last_warn_type = 0;
+    }   
+    
+    if (handle_warning_type(warning, NO_GPS_FIX_WARNING_INDEX, &last_warn_type, "NO GPS FIX")) {
+        return;
     }
     
-    //debug_warnings_three(warning, warn_cnt);
-
-    if (last_warn_type == 0) {
-      last_warn_type++;
-      if (warning[0] == 1) {
-          warn_str = "NO GPS FIX";
-          return;
-      }
+    if (handle_warning_type(warning, LOW_BATTERY_WARNING_INDEX, &last_warn_type, "LOW BATTERY")) {
+        return;
     }
     
-    if (last_warn_type == 1) {
-      last_warn_type++;
-      if (warning[1] == 1) {
-          warn_str = "LOW BATTERY";
-          return;
-      }
+    if (handle_warning_type(warning, SPEED_LOW_WARNING_INDEX, &last_warn_type, "SPEED LOW")) {
+        return;
     }
     
-    if (last_warn_type == 2) {
-      last_warn_type++;
-      if (warning[2] == 1) {
-          warn_str = "SPEED LOW";
-          return;
-      }
+    if (handle_warning_type(warning, OVER_SPEED_WARNING_INDEX, &last_warn_type, "OVER SPEED")) {
+        return;
     }
     
-    if (last_warn_type == 3) {
-      last_warn_type++;
-      if (warning[3] == 1) {
-          warn_str = "OVER SPEED";
-          return;
-      }
+    if (handle_warning_type(warning, LOW_ALTITUDE_WARNING_INDEX, &last_warn_type, "LOW ALT")) {
+        return;
     }
     
-    if (last_warn_type == 4) {
-      last_warn_type++;
-      if (warning[4] == 1) {
-          warn_str = "LOW ALT";
-          return;
-      }
-    }
-    
-    if (last_warn_type == 5) {
-      last_warn_type++;
-      if (warning[5] == 1) {
-          warn_str = "HIGH ALT";
-          return;
-      }
-    }
-    
-    if (last_warn_type == 6) {
-      last_warn_type++;
-      if (warning[6] == 1) {
-          warn_str = "NO HOME POSITION SET";
-          return;
-      }
+    if (handle_warning_type(warning, HIGH_ALTITUDE_WARNING_INDEX, &last_warn_type, "HIGH ALT")) {
+        return;
     }
 
-    // If we didn't match, there's a coding
-    // error of some kind. Warn the user/developer.
-    warn_str = "ERROR IN WARNING ROUTINE";
-    return;
+    if (handle_warning_type(warning, NO_HOME_POSITION_SET_WARNING_INDEX, &last_warn_type, "NO HOME POSITION SET")) {
+        return;
+    }
+    // If we haven't handled it at this point, we'll loop because of the while(haswarn), until we do finally 
+    // find the current error string to display.
   }
 
   // If you haven't found an error, this should ALWAYS get cleared
   warn_str = "";
 }
+
+
+
 
 void debug_wps(void) {
   char tmp_str[50] = { 0 };
