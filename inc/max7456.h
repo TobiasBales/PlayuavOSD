@@ -10,7 +10,7 @@
 #define MAX7456_MODE_MASK_PAL 0x40 //PAL mask 01000000
 #define MAX7456_CENTER_PAL 0x8
 
-#define MAX7456_MODE_MASK_NTCS 0x00 //NTSC mask 00000000 ("|" will do nothing)
+#define MAX7456_MODE_MASK_NTSC 0x00 //NTSC mask 00000000 ("|" will do nothing)
 #define MAX7456_CENTER_NTSC 0x6
 
 //MAX7456 reg read addresses

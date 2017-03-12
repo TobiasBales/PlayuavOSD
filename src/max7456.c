@@ -106,7 +106,7 @@ void SPI_MAX7456_setMode(int mode) {
   switch (mode)
   {
   case 0:
-    max7456_videoMode = MAX7456_MODE_MASK_NTCS;
+    max7456_videoMode = MAX7456_MODE_MASK_NTSC;
     break;
   case 1:
     max7456_videoMode = MAX7456_MODE_MASK_PAL;
