@@ -1,3 +1,8 @@
+This is a fork
+==============
+Of the original [PlayUAV OSD](https://github.com/PlayUAV/PlayuavOSD) since development stalled I picked up some work but have since stopped FPVing :(
+I always just bought the hardware from them so I have no deep insights there. Feel free to reach out to them, fingers crossed that you get a response.
+
 Introduction
 ============
 
